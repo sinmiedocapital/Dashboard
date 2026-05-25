@@ -40,13 +40,14 @@ def render_tutorial():
     )
 
     # ── Quick navigation ────────────────────────────────────────────────────
-    nav_cols = st.columns(5)
+    nav_cols = st.columns(6)
     sections = [
         ("📖", "Futures 101"),
         ("📜", "MCL & MES"),
         ("🗺️", "Dashboard Guide"),
         ("🔑", "Key Terms"),
         ("🛡️", "Risk Rules"),
+        ("🧠", "Psychology"),
     ]
     for col, (icon, label) in zip(nav_cols, sections):
         with col:
@@ -339,9 +340,12 @@ def render_tutorial():
          "Decide — before you open the platform — the maximum dollar amount you will lose today. "
          "Common rule: 2–3% of account. Once hit, stop trading. No exceptions.",
          "#e74c3c"),
-        ("2", "Never risk more than 1–2% of your account on a single trade",
+        ("2", "Never risk more than 1–2% per trade — hard cap at 5%",
          "Use the R:R Calculator (Risk Tools tab) every single time. "
-         "Calculate your dollar risk before entering, not after.",
+         "Target 1–2% risk per trade as your standard. "
+         "<b>5% is the absolute maximum</b> — a single trade should never put more than 5% "
+         "of your account at risk under any circumstances, even on a high-conviction setup. "
+         "At 5% risk, just 5 consecutive losers costs you 25% of your account. Stay conservative.",
          "#e67e22"),
         ("3", "Only take trades with R:R ≥ 2:1",
          "If your target is less than 2× your risk, skip the trade. "
@@ -383,6 +387,188 @@ def render_tutorial():
             f'</div>',
             unsafe_allow_html=True,
         )
+
+    # ── SECTION 6: Trading Psychology & Emotions ────────────────────────────
+    _section_header("🧠 Trading Psychology & Emotions")
+
+    st.markdown(
+        '<div style="font-size:0.85em;color:#5577aa;margin-bottom:14px;">'
+        'The market doesn\'t blow up accounts — emotions do. '
+        'Understanding your own psychology is just as important as any technical skill.'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    # ── A: Revenge Trading ──────────────────────────────────────────────────
+    with st.expander("🔴  Revenge Trading — What It Is & How to Stop It", expanded=False):
+        st.markdown(
+            '<div style="font-size:0.88em;color:#0a1428;line-height:1.7;'
+            'border-left:3px solid #e74c3c;padding-left:14px;">',
+            unsafe_allow_html=True,
+        )
+        _card(
+            "What Is Revenge Trading?",
+            "Revenge trading is entering a trade <b>to recover a loss</b> rather than because "
+            "a valid setup exists. After a losing trade, the brain triggers a stress response — "
+            "cortisol and adrenaline push you toward impulsive action. "
+            "You overtrade, increase size, or abandon your rules entirely. "
+            "The result is almost always a second, larger loss.",
+            "⚠️",
+            accent="#e74c3c",
+        )
+        _card(
+            "Warning Signs — Am I Revenge Trading?",
+            "• You just took a loss and feel a strong urge to trade immediately<br>"
+            "• You're thinking about 'making back' the money you lost<br>"
+            "• You're increasing position size after a losing trade<br>"
+            "• You skipped the Pre-Session Checklist for this trade<br>"
+            "• You feel angry, frustrated, or anxious<br>"
+            "• You can't clearly articulate your setup in one sentence<br><br>"
+            "If <b>any</b> of these apply, you are not in a tradeable state.",
+            "🚨",
+            accent="#c0392b",
+        )
+        _card(
+            "The 5-Rule Revenge Trading Circuit Breaker",
+            "<b>1. Two consecutive losses = mandatory break.</b> Close the platform. "
+            "A 15-minute walk is not optional.<br><br>"
+            "<b>2. Write before you re-enter.</b> Open your journal and describe the next "
+            "setup in full — entry, stop, target, rationale. If you can't write it clearly, "
+            "you're not ready to trade it.<br><br>"
+            "<b>3. Reset to minimum size.</b> After a losing stretch, trade your smallest "
+            "allowed size until you have 3 winning trades. Rebuild confidence, not P&L.<br><br>"
+            "<b>4. Never trade to 'make back' money.</b> Each trade is independent. "
+            "Yesterday's loss is irrelevant to today's setup. The market doesn't owe you anything.<br><br>"
+            "<b>5. Honor your daily loss limit.</b> Once you hit it, the session is over — "
+            "no matter how good the next setup looks.",
+            "🛑",
+            accent="#e67e22",
+        )
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # ── B: Market Psychology ────────────────────────────────────────────────
+    with st.expander("🟣  Market Psychology — Fear, Greed & Cognitive Biases", expanded=False):
+        st.markdown(
+            '<div style="font-size:0.88em;color:#0a1428;line-height:1.7;'
+            'border-left:3px solid #8e44ad;padding-left:14px;">',
+            unsafe_allow_html=True,
+        )
+        _card(
+            "The Market Emotion Cycle",
+            "Markets move in an emotional cycle that repeats across all timeframes. "
+            "Recognizing where you — and the crowd — are in this cycle is an edge:<br><br>"
+            "<b>Bull phase:</b> Optimism → Excitement → Thrill → <span style='color:#e74c3c;font-weight:600;'>Euphoria ← market tops form here</span><br>"
+            "<b>Bear phase:</b> Anxiety → Denial → Fear → Panic → Capitulation → "
+            "<span style='color:#27ae60;font-weight:600;'>Despondency ← market bottoms form here</span><br>"
+            "<b>Recovery:</b> Hope → Relief → Optimism (cycle restarts)<br><br>"
+            "The crowd is most bullish at tops and most bearish at bottoms — "
+            "exactly backwards from optimal positioning. "
+            "Your job is to fade the crowd at extremes, not join it.",
+            "🔄",
+            accent="#8e44ad",
+        )
+
+        biases = [
+            ("FOMO", "Fear of Missing Out",
+             "Chasing a move that has already happened because you're afraid of missing profit. "
+             "<b>Antidote:</b> There is always another trade. Missing a move costs you nothing. "
+             "Chasing it can cost you real money. If you missed it, mark it in your journal and wait for the next setup."),
+            ("Anchoring", "Fixating on a Past Price",
+             "Believing a price is 'cheap' or 'expensive' based on where it used to be, not where it is now. "
+             "<b>Antidote:</b> Trade the current price structure, not your memory of an old one. "
+             "The market has no obligation to return to any level."),
+            ("Confirmation Bias", "Seeing What You Want to See",
+             "Seeking out information that supports your existing thesis while ignoring evidence against it. "
+             "<b>Antidote:</b> Actively argue the other side before entering every trade. "
+             "Use the Thesis tab's bearish scenario section even when you're bullish."),
+            ("Loss Aversion", "Holding Losers, Cutting Winners Early",
+             "Psychologically, losses hurt roughly twice as much as equivalent gains feel good. "
+             "This causes traders to hold losing trades hoping for a recovery, and exit winners too early. "
+             "<b>Antidote:</b> Pre-define your stop and target before entering. Let the plan run — "
+             "don't override it mid-trade based on feelings."),
+            ("Recency Bias", "Extrapolating the Last Trade",
+             "Assuming the next trade will go the same way as the last one. "
+             "After a winner, overconfidence leads to oversizing. After a loser, fear causes undersizing or skipping valid setups. "
+             "<b>Antidote:</b> Each trade is a statistically independent event. "
+             "Your edge plays out over hundreds of trades, not one."),
+        ]
+
+        bias_cols = st.columns(2)
+        for i, (name, full, desc) in enumerate(biases):
+            with bias_cols[i % 2]:
+                st.markdown(
+                    f'<div style="background:#f8f0ff;border:1px solid #8e44ad;border-radius:6px;'
+                    f'padding:12px 14px;margin-bottom:10px;">'
+                    f'<div style="font-weight:700;color:#8e44ad;font-size:0.9em;margin-bottom:2px;">{name}</div>'
+                    f'<div style="font-size:0.78em;color:#5577aa;margin-bottom:6px;">{full}</div>'
+                    f'<div style="font-size:0.83em;color:#0a1428;line-height:1.55;">{desc}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # ── C: Trade Journaling ─────────────────────────────────────────────────
+    with st.expander("🟢  Trade Journaling — Your Most Important Tool", expanded=False):
+        st.markdown(
+            '<div style="font-size:0.88em;color:#0a1428;line-height:1.7;'
+            'border-left:3px solid #16a085;padding-left:14px;">',
+            unsafe_allow_html=True,
+        )
+        _card(
+            "Why Journal?",
+            "Your memory is biased — it protects your ego by softening bad trades and inflating good ones. "
+            "A journal is the only objective record of your actual trading behavior. "
+            "Traders who journal consistently improve measurably faster than those who don't. "
+            "It turns emotional experiences into data you can act on.<br><br>"
+            "The goal isn't to feel good or bad about trades — it's to find patterns: "
+            "<i>What setups work? When do I overtrade? What emotional state precedes my best trades?</i>",
+            "📓",
+            accent="#16a085",
+        )
+        _card(
+            "What to Log — Per Trade Template",
+            "<table style='width:100%;border-collapse:collapse;font-size:0.85em;'>"
+            "<tr style='background:#e8f5f1;'><th style='padding:5px 8px;text-align:left;color:#16a085;'>Field</th><th style='padding:5px 8px;text-align:left;color:#16a085;'>What to Write</th></tr>"
+            "<tr><td style='padding:4px 8px;color:#5577aa;border-bottom:1px solid #c5d5ee;'>Date &amp; Time</td><td style='padding:4px 8px;border-bottom:1px solid #c5d5ee;'>Session date, entry time</td></tr>"
+            "<tr><td style='padding:4px 8px;color:#5577aa;border-bottom:1px solid #c5d5ee;'>Contract</td><td style='padding:4px 8px;border-bottom:1px solid #c5d5ee;'>MCL or MES, # of contracts</td></tr>"
+            "<tr><td style='padding:4px 8px;color:#5577aa;border-bottom:1px solid #c5d5ee;'>Direction</td><td style='padding:4px 8px;border-bottom:1px solid #c5d5ee;'>Long or Short</td></tr>"
+            "<tr><td style='padding:4px 8px;color:#5577aa;border-bottom:1px solid #c5d5ee;'>Entry / Stop / Target</td><td style='padding:4px 8px;border-bottom:1px solid #c5d5ee;'>Planned prices before entry</td></tr>"
+            "<tr><td style='padding:4px 8px;color:#5577aa;border-bottom:1px solid #c5d5ee;'>Actual Exit</td><td style='padding:4px 8px;border-bottom:1px solid #c5d5ee;'>Where you actually closed</td></tr>"
+            "<tr><td style='padding:4px 8px;color:#5577aa;border-bottom:1px solid #c5d5ee;'>P&amp;L ($)</td><td style='padding:4px 8px;border-bottom:1px solid #c5d5ee;'>Dollar gain or loss</td></tr>"
+            "<tr><td style='padding:4px 8px;color:#5577aa;border-bottom:1px solid #c5d5ee;'>P&amp;L (R)</td><td style='padding:4px 8px;border-bottom:1px solid #c5d5ee;'>Result as multiples of risk (e.g. +2R, −1R)</td></tr>"
+            "<tr><td style='padding:4px 8px;color:#5577aa;border-bottom:1px solid #c5d5ee;'>Setup Rationale</td><td style='padding:4px 8px;border-bottom:1px solid #c5d5ee;'>1–2 sentences: why did you take this trade?</td></tr>"
+            "<tr><td style='padding:4px 8px;color:#5577aa;border-bottom:1px solid #c5d5ee;'>Emotional State</td><td style='padding:4px 8px;border-bottom:1px solid #c5d5ee;'>Before / during / after (calm, anxious, FOMO, etc.)</td></tr>"
+            "<tr><td style='padding:4px 8px;color:#5577aa;border-bottom:1px solid #c5d5ee;'>What I Did Well</td><td style='padding:4px 8px;border-bottom:1px solid #c5d5ee;'>Even on a losing trade, something went right</td></tr>"
+            "<tr><td style='padding:4px 8px;color:#5577aa;'>What to Improve</td><td style='padding:4px 8px;'>One specific, actionable thing to change</td></tr>"
+            "</table>",
+            "📋",
+            accent="#16a085",
+        )
+        _card(
+            "Weekly Review — 15 Minutes Every Sunday",
+            "Once a week, open your journal and calculate:<br>"
+            "• <b>Win rate</b> — what % of trades were profitable?<br>"
+            "• <b>Average R earned</b> — total R gained ÷ number of trades<br>"
+            "• <b>Best setup</b> — which entry pattern produced the most R?<br>"
+            "• <b>Worst habit</b> — what single behavior cost you the most?<br><br>"
+            "A 45% win rate with 2.5R average winners is highly profitable. "
+            "A 70% win rate with 0.8R average winners breaks even at best. "
+            "The numbers tell the truth — trust them over your feelings.",
+            "📅",
+            accent="#1abc9c",
+        )
+        _card(
+            "Recommended Journaling Tools",
+            "• <b>Spreadsheet (Google Sheets / Excel)</b> — free, fully customizable, "
+            "easy to add charts and formulas. Best starting point.<br>"
+            "• <b>Notion</b> — free, great for combining trade logs with daily notes and screenshots<br>"
+            "• <b>Edgewonk</b> — paid (~$169/yr), purpose-built trading journal with analytics, "
+            "R-multiple tracking, and psychological tagging. Worth it once you're trading consistently.<br><br>"
+            "Start simple. A Google Sheet you actually fill in beats a sophisticated tool you ignore.",
+            "🛠️",
+            accent="#27ae60",
+        )
+        st.markdown('</div>', unsafe_allow_html=True)
 
     # ── Footer ───────────────────────────────────────────────────────────────
     st.markdown(
