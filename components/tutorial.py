@@ -570,6 +570,193 @@ def render_tutorial():
         )
         st.markdown('</div>', unsafe_allow_html=True)
 
+    # ── D: Candlestick Psychology ───────────────────────────────────────────
+    with st.expander("🕯️  Candlestick Patterns — Reading Buyer vs. Seller Psychology", expanded=False):
+        st.markdown(
+            '<div style="font-size:0.85em;color:#5577aa;margin-bottom:14px;">'
+            'Every candle tells a story about who won the battle — buyers or sellers. '
+            'These 6 patterns cover the most common signals you\'ll see on MCL and MES intraday charts.'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+
+        def _candle_svg(body_color: str, body_pct: float, upper_wick: float, lower_wick: float,
+                        body_offset: float = 0.0) -> str:
+            """Return an inline SVG of a single candlestick (40×80px viewbox)."""
+            cx = 20
+            total_h = 72
+            wick_top = 4
+            wick_bot = total_h + 4
+            body_h = max(4, int(total_h * body_pct))
+            body_top = wick_top + int(total_h * upper_wick)
+            body_top += int(total_h * body_offset)
+            border = "#1a8a4a" if body_color == "#2ecc71" else "#a93226"
+            return (
+                f'<svg viewBox="0 0 40 80" width="40" height="80" xmlns="http://www.w3.org/2000/svg">'
+                f'<line x1="{cx}" y1="{wick_top}" x2="{cx}" y2="{wick_bot}" stroke="#555" stroke-width="2"/>'
+                f'<rect x="{cx-7}" y="{body_top}" width="14" height="{body_h}" '
+                f'fill="{body_color}" stroke="{border}" stroke-width="1" rx="1"/>'
+                f'</svg>'
+            )
+
+        patterns = [
+            {
+                "name": "Doji",
+                "tag": "Indecision",
+                "tag_color": "#7f8c8d",
+                "svg": (
+                    '<svg viewBox="0 0 40 80" width="40" height="80" xmlns="http://www.w3.org/2000/svg">'
+                    '<line x1="20" y1="4" x2="20" y2="76" stroke="#555" stroke-width="2"/>'
+                    '<rect x="13" y="37" width="14" height="6" fill="#f5f8ff" stroke="#555" stroke-width="1.5" rx="1"/>'
+                    '</svg>'
+                ),
+                "what_happened": (
+                    "Buyers and sellers battled to an exact draw. "
+                    "Price opened and closed at nearly the same level despite trading in both directions."
+                ),
+                "signal": (
+                    "No trade setup on its own. Wait for the next candle to show direction. "
+                    "A doji at a key level often precedes a sharp, decisive move."
+                ),
+            },
+            {
+                "name": "Hammer",
+                "tag": "Bullish Reversal",
+                "tag_color": "#27ae60",
+                "svg": (
+                    '<svg viewBox="0 0 40 80" width="40" height="80" xmlns="http://www.w3.org/2000/svg">'
+                    '<line x1="20" y1="4" x2="20" y2="76" stroke="#555" stroke-width="2"/>'
+                    '<rect x="13" y="10" width="14" height="16" fill="#2ecc71" stroke="#1a8a4a" stroke-width="1" rx="1"/>'
+                    '</svg>'
+                ),
+                "what_happened": (
+                    "Sellers drove price far below the open, but buyers stepped in hard "
+                    "and pushed it all the way back up — closing near the high."
+                ),
+                "signal": (
+                    "Bullish reversal signal. Most powerful at support or below VWAP. "
+                    "Buyers rejected lower prices — look for a long entry on the next candle."
+                ),
+            },
+            {
+                "name": "Shooting Star",
+                "tag": "Bearish Reversal",
+                "tag_color": "#e74c3c",
+                "svg": (
+                    '<svg viewBox="0 0 40 80" width="40" height="80" xmlns="http://www.w3.org/2000/svg">'
+                    '<line x1="20" y1="4" x2="20" y2="76" stroke="#555" stroke-width="2"/>'
+                    '<rect x="13" y="54" width="14" height="16" fill="#e74c3c" stroke="#a93226" stroke-width="1" rx="1"/>'
+                    '</svg>'
+                ),
+                "what_happened": (
+                    "Buyers drove price far above the open, but sellers dominated and "
+                    "pushed it all the way back down — closing near the low."
+                ),
+                "signal": (
+                    "Bearish reversal signal. Most powerful at resistance or above VWAP. "
+                    "Sellers rejected higher prices — look for a short entry on the next candle."
+                ),
+            },
+            {
+                "name": "Bullish Engulfing",
+                "tag": "Strong Bullish",
+                "tag_color": "#27ae60",
+                "svg": (
+                    '<svg viewBox="0 0 40 80" width="40" height="80" xmlns="http://www.w3.org/2000/svg">'
+                    '<line x1="14" y1="28" x2="14" y2="62" stroke="#555" stroke-width="1.5"/>'
+                    '<rect x="8" y="34" width="12" height="22" fill="#e74c3c" stroke="#a93226" stroke-width="1" rx="1"/>'
+                    '<line x1="26" y1="10" x2="26" y2="72" stroke="#555" stroke-width="1.5"/>'
+                    '<rect x="20" y="16" width="12" height="50" fill="#2ecc71" stroke="#1a8a4a" stroke-width="1" rx="1"/>'
+                    '</svg>'
+                ),
+                "what_happened": (
+                    "After a red candle, buyers opened lower and closed higher than the "
+                    "entire previous candle — completely swallowing it. Aggressive demand."
+                ),
+                "signal": (
+                    "Strong long signal after a pullback to support or VWAP. "
+                    "The bigger the engulf, the stronger the conviction."
+                ),
+            },
+            {
+                "name": "Bearish Engulfing",
+                "tag": "Strong Bearish",
+                "tag_color": "#e74c3c",
+                "svg": (
+                    '<svg viewBox="0 0 40 80" width="40" height="80" xmlns="http://www.w3.org/2000/svg">'
+                    '<line x1="14" y1="18" x2="14" y2="52" stroke="#555" stroke-width="1.5"/>'
+                    '<rect x="8" y="24" width="12" height="22" fill="#2ecc71" stroke="#1a8a4a" stroke-width="1" rx="1"/>'
+                    '<line x1="26" y1="8" x2="26" y2="72" stroke="#555" stroke-width="1.5"/>'
+                    '<rect x="20" y="14" width="12" height="50" fill="#e74c3c" stroke="#a93226" stroke-width="1" rx="1"/>'
+                    '</svg>'
+                ),
+                "what_happened": (
+                    "After a green candle, sellers opened higher and closed lower than the "
+                    "entire previous candle — completely swallowing it. Aggressive supply."
+                ),
+                "signal": (
+                    "Strong short signal after a rally to resistance or VWAP. "
+                    "High-probability when it appears at a prior swing high."
+                ),
+            },
+            {
+                "name": "Inside Bar",
+                "tag": "Compression",
+                "tag_color": "#8e44ad",
+                "svg": (
+                    '<svg viewBox="0 0 40 80" width="40" height="80" xmlns="http://www.w3.org/2000/svg">'
+                    '<line x1="14" y1="8" x2="14" y2="72" stroke="#555" stroke-width="1.5"/>'
+                    '<rect x="8" y="14" width="12" height="52" fill="#b0c4de" stroke="#555" stroke-width="1" rx="1"/>'
+                    '<line x1="26" y1="22" x2="26" y2="60" stroke="#555" stroke-width="1.5"/>'
+                    '<rect x="20" y="28" width="12" height="26" fill="#f5f8ff" stroke="#8e44ad" stroke-width="1.5" rx="1"/>'
+                    '</svg>'
+                ),
+                "what_happened": (
+                    "The current candle's entire range fits inside the prior candle. "
+                    "Neither side can push further — energy is compressing like a coiled spring."
+                ),
+                "signal": (
+                    "Breakout setup incoming. Don't anticipate direction — "
+                    "wait for the break above the high (long) or below the low (short), then trade it."
+                ),
+            },
+        ]
+
+        col_a, col_b, col_c = st.columns(3)
+        cols = [col_a, col_b, col_c]
+
+        for i, p in enumerate(patterns):
+            with cols[i % 3]:
+                st.markdown(
+                    f'<div style="background:#fffdf5;border:1px solid #e67e22;border-radius:8px;'
+                    f'padding:12px 14px;margin-bottom:14px;">'
+                    f'<div style="display:flex;align-items:flex-start;gap:10px;">'
+                    f'<div style="flex-shrink:0;">{p["svg"]}</div>'
+                    f'<div>'
+                    f'<div style="font-weight:700;color:#0a1428;font-size:0.92em;">{p["name"]}</div>'
+                    f'<span style="background:{p["tag_color"]};color:#fff;font-size:0.72em;'
+                    f'font-weight:600;border-radius:10px;padding:1px 8px;">{p["tag"]}</span>'
+                    f'</div>'
+                    f'</div>'
+                    f'<div style="margin-top:10px;font-size:0.82em;color:#0a1428;line-height:1.55;">'
+                    f'<b style="color:#e67e22;">What happened:</b> {p["what_happened"]}'
+                    f'</div>'
+                    f'<div style="margin-top:6px;font-size:0.82em;color:#3d5a80;line-height:1.55;">'
+                    f'<b>Signal:</b> {p["signal"]}'
+                    f'</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+        st.markdown(
+            '<div style="background:#fff8f0;border:1px solid #e67e22;border-radius:6px;'
+            'padding:10px 14px;margin-top:4px;font-size:0.82em;color:#7f5a3a;">'
+            '⚠️ <b>These are signals, not guarantees.</b> Always confirm with VWAP position, '
+            'volume, and your overall thesis before acting on any single candle pattern.'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+
     # ── Footer ───────────────────────────────────────────────────────────────
     st.markdown(
         '<div style="background:#eef3ff;border-radius:6px;padding:12px 16px;'
