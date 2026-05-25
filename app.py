@@ -129,6 +129,7 @@ from components.manual_input import render_manual_input_panel
 from components.chart_panel import render_chart_panel
 from components.rr_calculator import render_rr_calculator
 from components.pre_session_checklist import render_pre_session_checklist
+from components.tutorial import render_tutorial
 from utils.helpers import risk_badge
 
 # ---------------------------------------------------------------------------
@@ -200,12 +201,13 @@ mes = data["contracts"]["MES"]
 # Tabs
 # ---------------------------------------------------------------------------
 
-tab_overview, tab_charts, tab_thesis, tab_risk, tab_news = st.tabs([
+tab_overview, tab_charts, tab_thesis, tab_risk, tab_news, tab_tutorial = st.tabs([
     "📊 Overview",
     "📈 Charts",
     "📋 Thesis & Plan",
     "🧮 Risk Tools",
     "📰 News & Macro",
+    "📚 Tutorial",
 ])
 
 # ── Tab 1: Overview ─────────────────────────────────────────────────────────
@@ -286,6 +288,10 @@ with tab_news:
         render_macro_panel(data["macro"])
     with news_col:
         render_news_feed(data["news"])
+
+# ── Tab 6: Tutorial ───────────────────────────────────────────────────────────
+with tab_tutorial:
+    render_tutorial()
 
 # ---------------------------------------------------------------------------
 # Footer
