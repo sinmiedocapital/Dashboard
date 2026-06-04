@@ -1,0 +1,1172 @@
+//@version=6
+indicator("SMC Venice [Scalper] v9",
+     overlay=true,
+     max_boxes_count=200,
+     max_lines_count=250,
+     max_labels_count=200,
+     max_bars_back=300)
+
+// ── Input Groups ─────────────────────────────────────────────────────────────
+grpHTF = "HTF Bias"
+htfTf     = input.timeframe("60", "HTF Timeframe",   group=grpHTF)
+htfEmaLen = input.int(50,         "HTF EMA Length",  minval=1, maxval=200, group=grpHTF)
+showBias  = input.bool(true,      "Show Info Panel", group=grpHTF)
+
+grpVwap = "VWAP"
+showVwap   = input.bool(true, "Show VWAP Line", group=grpVwap)
+vwapFilter = input.bool(true, "VWAP as Filter", group=grpVwap)
+
+grpStruct = "Market Structure"
+structLen  = input.int(5,     "Pivot Lookback",  minval=2, maxval=20, group=grpStruct)
+showStruct = input.bool(true, "Show BOS/CHoCH",  group=grpStruct)
+
+grpOB = "Order Blocks"
+showOBs    = input.bool(true, "Show Order Blocks", group=grpOB,
+     tooltip="Last opposite-direction candle before each BOS/CHoCH.")
+maxOBs     = input.int(4,    "Max Active OBs",   minval=1, maxval=10, group=grpOB)
+obUseWicks = input.bool(true, "Use Full Candle Range (Wicks)", group=grpOB,
+     tooltip="ON: OB zone extends to wick high/low. OFF: body only.")
+
+grpFvg = "Fair Value Gaps"
+fvgMinPct = input.float(0.03, "Min FVG Size (%)", minval=0.01, maxval=0.5,  step=0.01, group=grpFvg)
+fvgMaxPct = input.float(0.20, "Max FVG Size (%)", minval=0.05, maxval=2.0,  step=0.01, group=grpFvg)
+maxFvgs   = input.int(4,      "Max Active FVGs",  minval=1, maxval=20, group=grpFvg)
+showFvgs  = input.bool(true,  "Show FVG Zones",   group=grpFvg)
+
+grpSessExt = "Sessions"
+showAsia   = input.bool(true,  "Show Asia/Overnight  (6PM–2AM ET)",  group=grpSessExt)
+showLondon = input.bool(true,  "Show London          (2AM–8AM ET)",  group=grpSessExt)
+showNyOpen = input.bool(true,  "Show NY Power Hour   (9:30–10:30)",  group=grpSessExt)
+showNyCls  = input.bool(false, "Show NY Close        (3:30–4:00 ET)", group=grpSessExt)
+
+grpSession   = "Session Filter"
+useSession   = input.bool(true,           "NY Session Filter",     group=grpSession,
+     tooltip="Only fires signals during high-volume NY windows. Blocks overnight noise.")
+sess1        = input.session("0930-1130", "Morning Window  (ET)",  group=grpSession)
+sess2        = input.session("1300-1430", "Afternoon Window (ET)", group=grpSession)
+
+grpRsi  = "RSI Filter"
+useRsi  = input.bool(true, "RSI Momentum Filter", group=grpRsi)
+rsiLen  = input.int(14,    "RSI Length",          minval=2, maxval=50, group=grpRsi)
+
+grpVol  = "Volume Filter"
+useVol  = input.bool(true, "Volume Spike Filter",   group=grpVol)
+volLen  = input.int(20,    "Volume SMA Length",     minval=5, maxval=100, group=grpVol)
+
+grpLiq      = "Liquidity Sweep"
+useLiq      = input.bool(true, "Require Wick Rejection",     group=grpLiq)
+liqLookback = input.int(5,     "Sweep Lookback (bars)",      minval=1, maxval=15, group=grpLiq)
+
+grpCandle = "Candle Confirmation"
+useCandle = input.bool(true,  "Require Rejection Candle",    group=grpCandle)
+wickMult  = input.float(1.5,  "Min Wick Ratio (x body)",     minval=1.0, maxval=4.0, step=0.5, group=grpCandle)
+
+grpEma   = "3 EMA Overlay"
+show3Ema = input.bool(false, "Show 3 EMA Lines", group=grpEma,
+     tooltip="Visual reference only — no impact on signal logic.")
+ema3Fast = input.int(8,  "Fast EMA", minval=1,  maxval=50,  group=grpEma)
+ema3Mid  = input.int(21, "Mid EMA",  minval=5,  maxval=100, group=grpEma)
+ema3Slow = input.int(55, "Slow EMA", minval=10, maxval=200, group=grpEma)
+
+grpNews     = "News Windows"
+showNewsWin = input.bool(true,  "Highlight News Windows",   group=grpNews,
+     tooltip="Yellow background on bars within a scheduled high-impact event window.")
+blockNews   = input.bool(false, "Block Signals During News", group=grpNews,
+     tooltip="Suppresses signals during defined news windows.")
+newsWin1    = input.session("0830-0900", "US Data Window (ET)",  group=grpNews,
+     tooltip="CPI, NFP, PPI, Retail Sales — all at 8:30 AM ET")
+newsWin2    = input.session("1030-1045", "EIA Oil Report (ET)",  group=grpNews,
+     tooltip="Weekly crude storage — key MCL mover, Wed 10:30 AM ET")
+newsWin3    = input.session("1400-1410", "FOMC/Fed Window (ET)", group=grpNews,
+     tooltip="Fed rate decisions and FOMC minutes")
+
+grpCorr    = "Correlated Pairs"
+showCorr   = input.bool(true,   "Show Correlation Panel", group=grpCorr,
+     tooltip="Top-left table: HTF bias for 4 correlated futures.")
+corrPair1  = input.symbol("NQ1!", "Pair 1 (NQ default)", group=grpCorr)
+corrPair2  = input.symbol("CL1!", "Pair 2 (CL default)", group=grpCorr)
+corrPair3  = input.symbol("GC1!", "Pair 3 (GC default)", group=grpCorr)
+corrPair4  = input.symbol("DX1!", "Pair 4 (DX default)", group=grpCorr)
+corrEmaLen = input.int(50, "Corr EMA Length", minval=1, maxval=200, group=grpCorr)
+
+grpPsych     = "Psychological Levels"
+showPsych    = input.bool(true,  "Show Round Number Levels", group=grpPsych,
+     tooltip="Horizontal lines at key psychological increments.\nMES=25, MCL=0.5, NQ=50")
+psychInc     = input.float(25.0, "Level Increment",          group=grpPsych, minval=0.01, step=0.25)
+psychLevels  = input.int(4,      "Levels Above/Below",       group=grpPsych, minval=1, maxval=8)
+psychMajorAt = input.int(4,      "Major Every N Levels",     group=grpPsych, minval=1, maxval=10,
+     tooltip="Every Nth level is drawn heavier. Default 4.")
+
+grpVrvp     = "Volume Profile (VRVP)"
+showVrvp    = input.bool(false, "Show Volume Profile", group=grpVrvp,
+     tooltip="Horizontal volume profile drawn to the right of price.\nShows where volume clustered in the lookback window. POC in gold.")
+vrvpBars    = input.int(100, "Lookback (bars)", minval=20, maxval=300, group=grpVrvp,
+     tooltip="Number of bars to include in the profile. Max 300 (matches indicator history limit).")
+vrvpBins    = input.int(24,  "Price Bins",      minval=8,  maxval=48,  group=grpVrvp)
+vrvpWidth   = input.int(8,   "Bar Width",       minval=2,  maxval=20,  group=grpVrvp,
+     tooltip="Max width of the widest bar, in chart bars.")
+
+grpSig     = "Signals"
+cooldown   = input.int(3,     "Signal Cooldown (bars)",      minval=1, maxval=20, group=grpSig)
+showLevels = input.bool(true, "Show Entry / SL / TP Lines",  group=grpSig)
+showAlerts = input.bool(true, "Show Signal Labels",           group=grpSig)
+useWebhook = input.bool(false, "Webhook JSON Alerts",         group=grpSig)
+
+grpTP    = "Take Profit Levels"
+tp1Ratio = input.float(1.0, "TP1 R:R", minval=0.5, maxval=3.0, step=0.5, group=grpTP)
+tpRatio  = input.float(2.0, "TP2 R:R", minval=1.0, maxval=5.0, step=0.5, group=grpTP)
+
+grpAtr  = "ATR Stop Buffer"
+atrLen  = input.int(14,    "ATR Length",        minval=1, maxval=50,  group=grpAtr)
+atrMult = input.float(0.5, "SL Buffer (x ATR)", minval=0.0, maxval=3.0, step=0.1, group=grpAtr)
+
+// ── Colors ───────────────────────────────────────────────────────────────────
+colBull       = #00c076
+colBear       = #ff3b5c
+colChochBull  = #00e5ff
+colChochBear  = #ff9800
+colVwap       = #b388ff
+colOBBull     = color.new(#00c076, 70)
+colOBBear     = color.new(#ff3b5c, 70)
+colFvgBull    = color.new(#00c076, 86)
+colFvgBear    = color.new(#ff3b5c, 86)
+colFvgBullMit = color.new(#00c076, 72)
+colFvgBearMit = color.new(#ff3b5c, 72)
+colOBBrdBull  = color.new(#00c076, 20)
+colOBBrdBear  = color.new(#ff3b5c, 20)
+colFvgBrdBull = color.new(#00c076, 50)
+colFvgBrdBear = color.new(#ff3b5c, 50)
+colEntry      = color.new(color.white, 30)
+colSL         = color.new(#ff3b5c, 15)
+colTP1        = color.new(#00c076, 40)
+colTP2        = color.new(#00c076, 10)
+colSessAsia   = color.new(#6c5ce7, 94)
+colSessLondon = color.new(#fdcb6e, 94)
+colSessNyOpen = color.new(#00c076, 91)
+colSessNyCls  = color.new(#ff3b5c, 94)
+colNews       = color.new(#ffd700, 92)
+colEmaFast    = #f9ca24
+colEmaMid     = #6c5ce7
+colEmaSlow    = #a29bfe
+
+// ── Core Calculations ────────────────────────────────────────────────────────
+atrVal = ta.atr(atrLen)
+
+[htfClose, htfEmaVal] = request.security(syminfo.tickerid, htfTf,
+     [close, ta.ema(close, htfEmaLen)], lookahead=barmerge.lookahead_off)
+htfBull = htfClose > htfEmaVal
+htfBear = htfClose < htfEmaVal
+
+[c1Close, c1Ema] = request.security(corrPair1, htfTf,
+     [close, ta.ema(close, corrEmaLen)], lookahead=barmerge.lookahead_off)
+[c2Close, c2Ema] = request.security(corrPair2, htfTf,
+     [close, ta.ema(close, corrEmaLen)], lookahead=barmerge.lookahead_off)
+[c3Close, c3Ema] = request.security(corrPair3, htfTf,
+     [close, ta.ema(close, corrEmaLen)], lookahead=barmerge.lookahead_off)
+[c4Close, c4Ema] = request.security(corrPair4, htfTf,
+     [close, ta.ema(close, corrEmaLen)], lookahead=barmerge.lookahead_off)
+c1Bull = c1Close > c1Ema
+c2Bull = c2Close > c2Ema
+c3Bull = c3Close > c3Ema
+c4Bull = c4Close > c4Ema
+
+emaFastVal = ta.ema(close, ema3Fast)
+emaMidVal  = ta.ema(close, ema3Mid)
+emaSlowVal = ta.ema(close, ema3Slow)
+
+vwapVal   = ta.vwap(hlc3)
+aboveVwap = close > vwapVal
+belowVwap = close < vwapVal
+
+// ── Session Detection ─────────────────────────────────────────────────────────
+inSessAsia   = not na(time(timeframe.period, "1800-0200", "America/New_York"))
+inSessLondon = not na(time(timeframe.period, "0200-0800", "America/New_York"))
+inSessNyPwr  = not na(time(timeframe.period, "0930-1030", "America/New_York"))
+inSessNyCls  = not na(time(timeframe.period, "1530-1600", "America/New_York"))
+
+inSess1   = not na(time(timeframe.period, sess1, "America/New_York"))
+inSess2   = not na(time(timeframe.period, sess2, "America/New_York"))
+inSession = inSess1 or inSess2
+sessionOk = useSession ? inSession : true
+
+inNews1      = not na(time(timeframe.period, newsWin1, "America/New_York"))
+inNews2      = not na(time(timeframe.period, newsWin2, "America/New_York"))
+inNews3      = not na(time(timeframe.period, newsWin3, "America/New_York"))
+inNewsWindow = inNews1 or inNews2 or inNews3
+newsOk       = blockNews ? not inNewsWindow : true
+
+// ── Background Highlights ────────────────────────────────────────────────────
+bgcolor(showAsia   and inSessAsia   ? colSessAsia   : na, title="Asia Session")
+bgcolor(showLondon and inSessLondon ? colSessLondon : na, title="London Session")
+bgcolor(showNyOpen and inSessNyPwr  ? colSessNyOpen : na, title="NY Power Hour")
+bgcolor(showNyCls  and inSessNyCls  ? colSessNyCls  : na, title="NY Close")
+bgcolor(showNewsWin and inNewsWindow ? colNews       : na, title="News Window")
+
+// ── Session Labels ───────────────────────────────────────────────────────────
+var label[] sessLbls = array.new<label>(0)
+maxSessLbls = 6
+
+if showAsia and not inSessAsia[1] and inSessAsia
+    array.push(sessLbls, label.new(bar_index, high, "Asia Open",
+         style=label.style_label_down, color=color.new(#6c5ce7, 50),
+         textcolor=color.white, size=size.tiny))
+    if array.size(sessLbls) > maxSessLbls
+        label.delete(array.shift(sessLbls))
+
+if showLondon and not inSessLondon[1] and inSessLondon
+    array.push(sessLbls, label.new(bar_index, high, "London Open",
+         style=label.style_label_down, color=color.new(#fdcb6e, 50),
+         textcolor=color.black, size=size.tiny))
+    if array.size(sessLbls) > maxSessLbls
+        label.delete(array.shift(sessLbls))
+
+if showNyOpen and not inSessNyPwr[1] and inSessNyPwr
+    array.push(sessLbls, label.new(bar_index, high, "NY Open",
+         style=label.style_label_down, color=color.new(#00c076, 40),
+         textcolor=color.white, size=size.tiny))
+    if array.size(sessLbls) > maxSessLbls
+        label.delete(array.shift(sessLbls))
+
+// ── 3 EMA Plots ──────────────────────────────────────────────────────────────
+plot(show3Ema ? emaFastVal : na, "EMA Fast", color=colEmaFast, linewidth=1)
+plot(show3Ema ? emaMidVal  : na, "EMA Mid",  color=colEmaMid,  linewidth=1)
+plot(show3Ema ? emaSlowVal : na, "EMA Slow", color=colEmaSlow, linewidth=2)
+
+// ── VWAP ─────────────────────────────────────────────────────────────────────
+plot(showVwap ? vwapVal : na, "VWAP", color=colVwap, linewidth=2)
+
+vwapLongOk  = vwapFilter ? aboveVwap : true
+vwapShortOk = vwapFilter ? belowVwap : true
+
+// ── RSI / Volume ─────────────────────────────────────────────────────────────
+rsiVal     = ta.rsi(close, rsiLen)
+rsiLongOk  = useRsi ? rsiVal > 50.0 : true
+rsiShortOk = useRsi ? rsiVal < 50.0 : true
+
+volSma   = ta.sma(volume, volLen)
+volSpike = volume > volSma
+volOk    = useVol ? volSpike : true
+
+// ── Market Structure Pivots ──────────────────────────────────────────────────
+pivHigh = ta.pivothigh(high, structLen, structLen)
+pivLow  = ta.pivotlow(low,  structLen, structLen)
+
+var float  swingHigh    = na
+var float  swingLow     = na
+var int    swingHighBar = na
+var int    swingLowBar  = na
+var string mktStr       = "neutral"
+
+if not na(pivHigh)
+    swingHigh    := pivHigh
+    swingHighBar := bar_index[structLen]
+if not na(pivLow)
+    swingLow    := pivLow
+    swingLowBar := bar_index[structLen]
+
+bosBull   = not na(swingHigh) and close > swingHigh and mktStr == "bullish"
+chochBull = not na(swingHigh) and close > swingHigh and (mktStr == "bearish" or mktStr == "neutral")
+bosBear   = not na(swingLow)  and close < swingLow  and mktStr == "bearish"
+chochBear = not na(swingLow)  and close < swingLow  and (mktStr == "bullish" or mktStr == "neutral")
+
+snapSwingHigh    = swingHigh
+snapSwingHighBar = swingHighBar
+snapSwingLow     = swingLow
+snapSwingLowBar  = swingLowBar
+
+// ── Order Blocks ─────────────────────────────────────────────────────────────
+var float[] obTop     = array.new_float(0)
+var float[] obBot     = array.new_float(0)
+var int[]   obBar     = array.new_int(0)
+var bool[]  obBull    = array.new_bool(0)
+var box[]   obBoxRefs = array.new<box>(0)
+
+obScanLen = 30
+
+if chochBull or bosBull
+    // Clear invalidated bear OBs on bullish structure break
+    sz = array.size(obTop)
+    if sz > 0
+        for i = sz - 1 to 0
+            if not array.get(obBull, i)
+                box.delete(array.get(obBoxRefs, i))
+                array.remove(obBoxRefs, i)
+                array.remove(obTop,  i)
+                array.remove(obBot,  i)
+                array.remove(obBar,  i)
+                array.remove(obBull, i)
+    mktStr    := "bullish"
+    swingHigh := na
+    for k = 1 to obScanLen
+        if close[k] < open[k]
+            obH = obUseWicks ? high[k]  : math.max(open[k], close[k])
+            obL = obUseWicks ? low[k]   : math.min(open[k], close[k])
+            array.unshift(obTop,  obH)
+            array.unshift(obBot,  obL)
+            array.unshift(obBar,  bar_index - k)
+            array.unshift(obBull, true)
+            newBox = showOBs ? box.new(
+                 bar_index - k, obH, bar_index, obL,
+                 bgcolor=colOBBull, border_color=colOBBrdBull,
+                 border_width=2, border_style=line.style_solid,
+                 text="OB ▲", text_size=size.tiny,
+                 text_color=color.new(colBull, 10),
+                 text_halign=text.align_right, text_valign=text.align_top) : na
+            array.unshift(obBoxRefs, newBox)
+            if array.size(obTop) > maxOBs
+                array.pop(obTop)
+                array.pop(obBot)
+                array.pop(obBar)
+                array.pop(obBull)
+                box.delete(array.pop(obBoxRefs))
+            break
+
+if chochBear or bosBear
+    // Clear invalidated bull OBs on bearish structure break
+    sz = array.size(obTop)
+    if sz > 0
+        for i = sz - 1 to 0
+            if array.get(obBull, i)
+                box.delete(array.get(obBoxRefs, i))
+                array.remove(obBoxRefs, i)
+                array.remove(obTop,  i)
+                array.remove(obBot,  i)
+                array.remove(obBar,  i)
+                array.remove(obBull, i)
+    mktStr   := "bearish"
+    swingLow := na
+    for k = 1 to obScanLen
+        if close[k] > open[k]
+            obH = obUseWicks ? high[k]  : math.max(open[k], close[k])
+            obL = obUseWicks ? low[k]   : math.min(open[k], close[k])
+            array.unshift(obTop,  obH)
+            array.unshift(obBot,  obL)
+            array.unshift(obBar,  bar_index - k)
+            array.unshift(obBull, false)
+            newBox = showOBs ? box.new(
+                 bar_index - k, obH, bar_index, obL,
+                 bgcolor=colOBBear, border_color=colOBBrdBear,
+                 border_width=2, border_style=line.style_solid,
+                 text="OB ▼", text_size=size.tiny,
+                 text_color=color.new(colBear, 10),
+                 text_halign=text.align_right, text_valign=text.align_bottom) : na
+            array.unshift(obBoxRefs, newBox)
+            if array.size(obTop) > maxOBs
+                array.pop(obTop)
+                array.pop(obBot)
+                array.pop(obBar)
+                array.pop(obBull)
+                box.delete(array.pop(obBoxRefs))
+            break
+
+// ── Structure Lines / Labels ─────────────────────────────────────────────────
+var line[]  structLines = array.new<line>(0)
+var label[] structLbls  = array.new<label>(0)
+maxStructItems = 12
+
+if showStruct
+    if bosBull or chochBull
+        lCol   = bosBull ? color.new(color.gray, 40) : color.new(colChochBull, 20)
+        lStyle = bosBull ? line.style_dotted : line.style_dashed
+        array.push(structLines, line.new(snapSwingHighBar, snapSwingHigh, bar_index, snapSwingHigh,
+             color=lCol, width=1, style=lStyle, extend=extend.right))
+        if array.size(structLines) > maxStructItems
+            line.delete(array.shift(structLines))
+        lbl    = bosBull ? "BOS ▲" : "CHoCH ▲"
+        lColor = bosBull ? color.new(color.gray, 30) : color.new(colChochBull, 10)
+        array.push(structLbls, label.new(bar_index, snapSwingHigh, lbl,
+             style=label.style_label_down, color=lColor,
+             textcolor=color.white, size=size.small))
+        if array.size(structLbls) > maxStructItems
+            label.delete(array.shift(structLbls))
+    if bosBear or chochBear
+        lCol   = bosBear ? color.new(color.gray, 40) : color.new(colChochBear, 20)
+        lStyle = bosBear ? line.style_dotted : line.style_dashed
+        array.push(structLines, line.new(snapSwingLowBar, snapSwingLow, bar_index, snapSwingLow,
+             color=lCol, width=1, style=lStyle, extend=extend.right))
+        if array.size(structLines) > maxStructItems
+            line.delete(array.shift(structLines))
+        lbl    = bosBear ? "BOS ▼" : "CHoCH ▼"
+        lColor = bosBear ? color.new(color.gray, 30) : color.new(colChochBear, 10)
+        array.push(structLbls, label.new(bar_index, snapSwingLow, lbl,
+             style=label.style_label_up, color=lColor,
+             textcolor=color.white, size=size.small))
+        if array.size(structLbls) > maxStructItems
+            label.delete(array.shift(structLbls))
+
+// ── Liquidity Sweep ───────────────────────────────────────────────────────────
+bullLiqSweep = false
+bearLiqSweep = false
+if useLiq and not na(swingLow)
+    for j = 1 to liqLookback
+        if low[j] < swingLow and close[j] > swingLow
+            bullLiqSweep := true
+            break
+if useLiq and not na(swingHigh)
+    for j = 1 to liqLookback
+        if high[j] > swingHigh and close[j] < swingHigh
+            bearLiqSweep := true
+            break
+liqLongOk  = useLiq ? bullLiqSweep : true
+liqShortOk = useLiq ? bearLiqSweep : true
+
+// ── OB Zone Check (invalidate + track) ───────────────────────────────────────
+inBullOB    = false
+inBearOB    = false
+bullOBSlRef = float(na)
+bearOBSlRef = float(na)
+
+nOB = array.size(obTop)
+if nOB > 0
+    for i = nOB - 1 to 0
+        topV   = array.get(obTop,  i)
+        botV   = array.get(obBot,  i)
+        isBull = array.get(obBull, i)
+        if isBull and close < botV
+            box.delete(array.get(obBoxRefs, i))
+            array.remove(obBoxRefs, i)
+            array.remove(obTop,  i)
+            array.remove(obBot,  i)
+            array.remove(obBar,  i)
+            array.remove(obBull, i)
+        else if not isBull and close > topV
+            box.delete(array.get(obBoxRefs, i))
+            array.remove(obBoxRefs, i)
+            array.remove(obTop,  i)
+            array.remove(obBot,  i)
+            array.remove(obBar,  i)
+            array.remove(obBull, i)
+        else if close >= botV and close <= topV
+            if isBull
+                inBullOB    := true
+                bullOBSlRef := botV
+            else
+                inBearOB    := true
+                bearOBSlRef := topV
+
+if showOBs
+    sz = array.size(obBoxRefs)
+    if sz > 0
+        for i = 0 to sz - 1
+            b = array.get(obBoxRefs, i)
+            if not na(b)
+                box.set_right(b, bar_index)
+
+// ── Fair Value Gaps ───────────────────────────────────────────────────────────
+var float[] fvgTop     = array.new_float(0)
+var float[] fvgBot     = array.new_float(0)
+var int[]   fvgBar     = array.new_int(0)
+var bool[]  fvgBull    = array.new_bool(0)
+var box[]   fvgBoxRefs = array.new<box>(0)
+
+minSz = fvgMinPct / 100.0
+maxSz = fvgMaxPct / 100.0
+bullGap    = low    - high[2]
+bearGap    = low[2] - high
+newBullFvg = low > high[2] and (bullGap / close) >= minSz and (bullGap / close) <= maxSz
+newBearFvg = high < low[2] and (bearGap / close) >= minSz and (bearGap / close) <= maxSz
+
+if newBullFvg
+    array.unshift(fvgTop,  low)
+    array.unshift(fvgBot,  high[2])
+    array.unshift(fvgBar,  bar_index[1])
+    array.unshift(fvgBull, true)
+    newFvgBox = showFvgs ? box.new(
+         bar_index[1], low, bar_index, high[2],
+         bgcolor=colFvgBull, border_color=colFvgBrdBull,
+         border_width=1, text="FVG", text_size=size.tiny,
+         text_color=color.new(color.white, 40),
+         text_halign=text.align_left, text_valign=text.align_bottom) : na
+    array.unshift(fvgBoxRefs, newFvgBox)
+    if array.size(fvgTop) > maxFvgs
+        array.pop(fvgTop)
+        array.pop(fvgBot)
+        array.pop(fvgBar)
+        array.pop(fvgBull)
+        box.delete(array.pop(fvgBoxRefs))
+
+if newBearFvg
+    array.unshift(fvgTop,  low[2])
+    array.unshift(fvgBot,  high)
+    array.unshift(fvgBar,  bar_index[1])
+    array.unshift(fvgBull, false)
+    newFvgBox = showFvgs ? box.new(
+         bar_index[1], low[2], bar_index, high,
+         bgcolor=colFvgBear, border_color=colFvgBrdBear,
+         border_width=1, text="FVG", text_size=size.tiny,
+         text_color=color.new(color.white, 40),
+         text_halign=text.align_left, text_valign=text.align_top) : na
+    array.unshift(fvgBoxRefs, newFvgBox)
+    if array.size(fvgTop) > maxFvgs
+        array.pop(fvgTop)
+        array.pop(fvgBot)
+        array.pop(fvgBar)
+        array.pop(fvgBull)
+        box.delete(array.pop(fvgBoxRefs))
+
+// ── FVG Zone Check + Mitigation Style ────────────────────────────────────────
+inBullFvg    = false
+inBearFvg    = false
+bullFvgSlRef = float(na)
+bearFvgSlRef = float(na)
+
+nFvg = array.size(fvgTop)
+if nFvg > 0
+    for i = nFvg - 1 to 0
+        topV   = array.get(fvgTop,  i)
+        botV   = array.get(fvgBot,  i)
+        isBull = array.get(fvgBull, i)
+        if isBull and close < botV
+            box.delete(array.get(fvgBoxRefs, i))
+            array.remove(fvgBoxRefs, i)
+            array.remove(fvgTop,  i)
+            array.remove(fvgBot,  i)
+            array.remove(fvgBar,  i)
+            array.remove(fvgBull, i)
+        else if not isBull and close > topV
+            box.delete(array.get(fvgBoxRefs, i))
+            array.remove(fvgBoxRefs, i)
+            array.remove(fvgTop,  i)
+            array.remove(fvgBot,  i)
+            array.remove(fvgBar,  i)
+            array.remove(fvgBull, i)
+        else
+            b = array.get(fvgBoxRefs, i)
+            if close >= botV and close <= topV
+                if isBull
+                    inBullFvg    := true
+                    bullFvgSlRef := botV
+                    if showFvgs and not na(b)
+                        box.set_bgcolor(b, colFvgBullMit)
+                else
+                    inBearFvg    := true
+                    bearFvgSlRef := topV
+                    if showFvgs and not na(b)
+                        box.set_bgcolor(b, colFvgBearMit)
+
+if showFvgs
+    sz = array.size(fvgBoxRefs)
+    if sz > 0
+        for i = 0 to sz - 1
+            b = array.get(fvgBoxRefs, i)
+            if not na(b)
+                box.set_right(b, bar_index)
+
+// ── Signal Conditions ────────────────────────────────────────────────────────
+inBullZone  = inBullFvg or inBullOB
+inBearZone  = inBearFvg or inBearOB
+rawBullSl   = not na(bullOBSlRef) ? bullOBSlRef : bullFvgSlRef
+rawBearSl   = not na(bearOBSlRef) ? bearOBSlRef : bearFvgSlRef
+bullSlFinal = rawBullSl - atrVal * atrMult
+bearSlFinal = rawBearSl + atrVal * atrMult
+
+bodySize  = math.abs(close - open)
+upperWick = high - math.max(close, open)
+lowerWick = math.min(close, open) - low
+
+hammer     = close > open and bodySize > 0 and
+             lowerWick >= bodySize * wickMult and upperWick <= bodySize * 0.6
+bullEngulf = close > open and open[1] > close[1] and close > open[1] and open < close[1]
+shootStar  = close < open and bodySize > 0 and
+             upperWick >= bodySize * wickMult and lowerWick <= bodySize * 0.6
+bearEngulf = close < open and close[1] > open[1] and close < open[1] and open > close[1]
+
+candleLongOk  = useCandle ? (hammer or bullEngulf) : true
+candleShortOk = useCandle ? (shootStar or bearEngulf) : true
+
+buyRaw  = inBullZone and htfBull and mktStr == "bullish" and
+          vwapLongOk  and rsiLongOk  and sessionOk and volOk and
+          liqLongOk   and candleLongOk  and newsOk
+sellRaw = inBearZone and htfBear and mktStr == "bearish" and
+          vwapShortOk and rsiShortOk and sessionOk and volOk and
+          liqShortOk  and candleShortOk and newsOk
+
+var int lastSig = -999
+validBuy  = buyRaw  and (bar_index - lastSig > cooldown)
+validSell = sellRaw and (bar_index - lastSig > cooldown)
+if validBuy or validSell
+    lastSig := bar_index
+
+// ── TP1 Tracking ─────────────────────────────────────────────────────────────
+var float tp1Track  = na
+var bool  tp1Long   = false
+var bool  tp1Short  = false
+var bool  tp1Fired  = false
+var int   tp1SetBar = -999
+
+if validBuy and not na(bullSlFinal)
+    _r        = close - bullSlFinal
+    tp1Track  := close + _r * tp1Ratio
+    tp1Long   := true
+    tp1Short  := false
+    tp1Fired  := false
+    tp1SetBar := bar_index
+
+if validSell and not na(bearSlFinal)
+    _r        = bearSlFinal - close
+    tp1Track  := close - _r * tp1Ratio
+    tp1Long   := false
+    tp1Short  := true
+    tp1Fired  := false
+    tp1SetBar := bar_index
+
+tp1Hit = false
+if not na(tp1Track) and not tp1Fired and bar_index > tp1SetBar
+    if tp1Long and high >= tp1Track
+        tp1Hit   := true
+        tp1Fired := true
+        tp1Long  := false
+    if tp1Short and low <= tp1Track
+        tp1Hit   := true
+        tp1Fired := true
+        tp1Short := false
+
+// ── SL Tracking ──────────────────────────────────────────────────────────────
+var float slTrack  = na
+var bool  slLong   = false
+var bool  slShort  = false
+var bool  slFired  = false
+var int   slSetBar = -999
+
+if validBuy and not na(bullSlFinal)
+    slTrack  := bullSlFinal
+    slLong   := true
+    slShort  := false
+    slFired  := false
+    slSetBar := bar_index
+
+if validSell and not na(bearSlFinal)
+    slTrack  := bearSlFinal
+    slLong   := false
+    slShort  := true
+    slFired  := false
+    slSetBar := bar_index
+
+slBreach = false
+if not na(slTrack) and not slFired and bar_index > slSetBar
+    if slLong  and close < slTrack
+        slBreach := true
+        slFired  := true
+        slLong   := false
+    if slShort and close > slTrack
+        slBreach := true
+        slFired  := true
+        slShort  := false
+
+// ── Win / Loss Log ────────────────────────────────────────────────────────────
+var int totalWins   = 0
+var int totalLosses = 0
+
+var string[] logDir    = array.new_string(0)
+var float[]  logEntry  = array.new_float(0)
+var float[]  logTP1    = array.new_float(0)
+var float[]  logSL     = array.new_float(0)
+var string[] logResult = array.new_string(0)
+maxLog = 5
+
+if validBuy and not na(bullSlFinal)
+    _r   = close - bullSlFinal
+    array.unshift(logDir,    "LONG")
+    array.unshift(logEntry,  close)
+    array.unshift(logTP1,    close + _r * tp1Ratio)
+    array.unshift(logSL,     bullSlFinal)
+    array.unshift(logResult, "Open")
+    if array.size(logDir) > maxLog
+        array.pop(logDir)
+        array.pop(logEntry)
+        array.pop(logTP1)
+        array.pop(logSL)
+        array.pop(logResult)
+
+if validSell and not na(bearSlFinal)
+    _r   = bearSlFinal - close
+    array.unshift(logDir,    "SHORT")
+    array.unshift(logEntry,  close)
+    array.unshift(logTP1,    close - _r * tp1Ratio)
+    array.unshift(logSL,     bearSlFinal)
+    array.unshift(logResult, "Open")
+    if array.size(logDir) > maxLog
+        array.pop(logDir)
+        array.pop(logEntry)
+        array.pop(logTP1)
+        array.pop(logSL)
+        array.pop(logResult)
+
+if tp1Hit and array.size(logResult) > 0
+    if array.get(logResult, 0) == "Open"
+        array.set(logResult, 0, "Win TP1")
+        totalWins += 1
+
+if slBreach and array.size(logResult) > 0
+    if array.get(logResult, 0) == "Open"
+        array.set(logResult, 0, "Loss SL")
+        totalLosses += 1
+
+// ── Signal Plots ──────────────────────────────────────────────────────────────
+bgcolor(validBuy  ? color.new(colBull, 90) : na, title="Long Bar BG")
+bgcolor(validSell ? color.new(colBear, 90) : na, title="Short Bar BG")
+
+plotshape(validBuy,  "LONG Signal",  shape.triangleup,   location.belowbar,
+     color=colBull, size=size.large, text="LONG",  textcolor=color.white)
+plotshape(validSell, "SHORT Signal", shape.triangledown, location.abovebar,
+     color=colBear, size=size.large, text="SHORT", textcolor=color.white)
+plotshape(tp1Hit,    "TP1 Hit",      shape.circle,       location.abovebar,
+     color=color.new(#ffd700, 10), size=size.small)
+plotshape(slBreach,  "SL Breach",    shape.xcross,       location.abovebar,
+     color=color.new(#ff3b5c, 0),  size=size.small)
+
+// ── Entry / SL / TP Level Lines ───────────────────────────────────────────────
+levelLen    = 30
+maxLevelSet = 6
+var line[] entryLines = array.new<line>(0)
+var line[] slLines    = array.new<line>(0)
+var line[] tp1Lines   = array.new<line>(0)
+var line[] tp2Lines   = array.new<line>(0)
+
+if showLevels
+    if validBuy and not na(bullSlFinal)
+        entryPx = close
+        slPx    = bullSlFinal
+        risk    = entryPx - slPx
+        tp1Px   = entryPx + risk * tp1Ratio
+        tp2Px   = entryPx + risk * tpRatio
+        array.push(entryLines, line.new(bar_index, entryPx, bar_index + levelLen, entryPx,
+             color=colEntry, width=1, style=line.style_dashed))
+        array.push(slLines,    line.new(bar_index, slPx,    bar_index + levelLen, slPx,
+             color=colSL,    width=2, style=line.style_solid))
+        array.push(tp1Lines,   line.new(bar_index, tp1Px,   bar_index + levelLen, tp1Px,
+             color=colTP1,   width=1, style=line.style_dashed))
+        array.push(tp2Lines,   line.new(bar_index, tp2Px,   bar_index + levelLen, tp2Px,
+             color=colTP2,   width=2, style=line.style_solid))
+        if array.size(entryLines) > maxLevelSet
+            line.delete(array.shift(entryLines))
+            line.delete(array.shift(slLines))
+            line.delete(array.shift(tp1Lines))
+            line.delete(array.shift(tp2Lines))
+    if validSell and not na(bearSlFinal)
+        entryPx = close
+        slPx    = bearSlFinal
+        risk    = slPx - entryPx
+        tp1Px   = entryPx - risk * tp1Ratio
+        tp2Px   = entryPx - risk * tpRatio
+        array.push(entryLines, line.new(bar_index, entryPx, bar_index + levelLen, entryPx,
+             color=colEntry, width=1, style=line.style_dashed))
+        array.push(slLines,    line.new(bar_index, slPx,    bar_index + levelLen, slPx,
+             color=colSL,    width=2, style=line.style_solid))
+        array.push(tp1Lines,   line.new(bar_index, tp1Px,   bar_index + levelLen, tp1Px,
+             color=colTP1,   width=1, style=line.style_dashed))
+        array.push(tp2Lines,   line.new(bar_index, tp2Px,   bar_index + levelLen, tp2Px,
+             color=colTP2,   width=2, style=line.style_solid))
+        if array.size(entryLines) > maxLevelSet
+            line.delete(array.shift(entryLines))
+            line.delete(array.shift(slLines))
+            line.delete(array.shift(tp1Lines))
+            line.delete(array.shift(tp2Lines))
+
+// ── Signal Labels ─────────────────────────────────────────────────────────────
+var label[] sigLbls = array.new<label>(0)
+maxSigLbls = 20
+
+if showAlerts
+    if validBuy and not na(bullSlFinal)
+        entryPx  = close
+        slPx     = bullSlFinal
+        risk     = entryPx - slPx
+        tp1Px    = entryPx + risk * tp1Ratio
+        tp2Px    = entryPx + risk * tpRatio
+        zoneType = (inBullOB and inBullFvg) ? "OB + FVG" : inBullOB ? "OB" : "FVG"
+        candleTxt = hammer ? "Hammer" : "Engulf"
+        txt = "▲  LONG  [" + candleTxt + "]\n" +
+              "Entry   " + str.tostring(entryPx, "#.##") + "\n" +
+              "SL      " + str.tostring(slPx,    "#.##") + "  (-" + str.tostring(risk,    "#.##") + ")\n" +
+              "TP1     " + str.tostring(tp1Px,   "#.##") + "  (" + str.tostring(tp1Ratio, "#.#") + "R)\n" +
+              "TP2     " + str.tostring(tp2Px,   "#.##") + "  (" + str.tostring(tpRatio,  "#.#") + "R)\n" +
+              "Zone    " + zoneType + "\n" +
+              "ATR buf " + str.tostring(atrVal * atrMult, "#.###")
+        array.push(sigLbls, label.new(bar_index, low - (high - low) * 0.5, txt,
+             style=label.style_label_up, color=color.new(colBull, 10),
+             textcolor=color.white, size=size.small))
+        if array.size(sigLbls) > maxSigLbls
+            label.delete(array.shift(sigLbls))
+    if validSell and not na(bearSlFinal)
+        entryPx  = close
+        slPx     = bearSlFinal
+        risk     = slPx - entryPx
+        tp1Px    = entryPx - risk * tp1Ratio
+        tp2Px    = entryPx - risk * tpRatio
+        zoneType = (inBearOB and inBearFvg) ? "OB + FVG" : inBearOB ? "OB" : "FVG"
+        candleTxt = shootStar ? "ShootStar" : "Engulf"
+        txt = "▼  SHORT  [" + candleTxt + "]\n" +
+              "Entry   " + str.tostring(entryPx, "#.##") + "\n" +
+              "SL      " + str.tostring(slPx,    "#.##") + "  (+" + str.tostring(risk,    "#.##") + ")\n" +
+              "TP1     " + str.tostring(tp1Px,   "#.##") + "  (" + str.tostring(tp1Ratio, "#.#") + "R)\n" +
+              "TP2     " + str.tostring(tp2Px,   "#.##") + "  (" + str.tostring(tpRatio,  "#.#") + "R)\n" +
+              "Zone    " + zoneType + "\n" +
+              "ATR buf " + str.tostring(atrVal * atrMult, "#.###")
+        array.push(sigLbls, label.new(bar_index, high + (high - low) * 0.5, txt,
+             style=label.style_label_down, color=color.new(colBear, 10),
+             textcolor=color.white, size=size.small))
+        if array.size(sigLbls) > maxSigLbls
+            label.delete(array.shift(sigLbls))
+
+// ── Alert Conditions ─────────────────────────────────────────────────────────
+alertcondition(validBuy,  "SMC Venice LONG",    "SMC Venice A+ LONG signal")
+alertcondition(validSell, "SMC Venice SHORT",   "SMC Venice A+ SHORT signal")
+alertcondition(tp1Hit,    "SMC Venice TP1 Hit", "TP1 reached — scale out")
+alertcondition(slBreach,  "SMC Venice SL Hit",  "Stop loss breached — exit position")
+
+if validBuy and not na(bullSlFinal)
+    _entry = close
+    _sl    = bullSlFinal
+    _risk  = _entry - _sl
+    _tp1   = _entry + _risk * tp1Ratio
+    _tp2   = _entry + _risk * tpRatio
+    _zone  = (inBullOB and inBullFvg) ? "OB+FVG" : inBullOB ? "OB" : "FVG"
+    _cndl  = hammer ? "Hammer" : "BullEngulf"
+    _msg   = useWebhook ?
+         "{\"action\":\"buy\",\"symbol\":\"" + syminfo.ticker +
+         "\",\"tf\":\"" + timeframe.period +
+         "\",\"entry\":"    + str.tostring(_entry, "#.##") +
+         ",\"sl\":"         + str.tostring(_sl,    "#.##") +
+         ",\"tp1\":"        + str.tostring(_tp1,   "#.##") +
+         ",\"tp2\":"        + str.tostring(_tp2,   "#.##") +
+         ",\"zone\":\""     + _zone +
+         "\",\"candle\":\"" + _cndl + "\"}" :
+         "A+ LONG  " + syminfo.ticker + " [" + timeframe.period + "m]  [" + _cndl + "]\n" +
+         "Entry  " + str.tostring(_entry, "#.##") + "\n" +
+         "SL     " + str.tostring(_sl,   "#.##") + "  (-" + str.tostring(_risk, "#.##") + ")\n" +
+         "TP1    " + str.tostring(_tp1,  "#.##") + "  (" + str.tostring(tp1Ratio, "#.#") + "R)\n" +
+         "TP2    " + str.tostring(_tp2,  "#.##") + "  (" + str.tostring(tpRatio,  "#.#") + "R)\n" +
+         "Zone   " + _zone + "  |  HTF: " + (htfBull ? "Bull" : "Bear")
+    alert(_msg, alert.freq_once_per_bar)
+
+if validSell and not na(bearSlFinal)
+    _entry = close
+    _sl    = bearSlFinal
+    _risk  = _sl - _entry
+    _tp1   = _entry - _risk * tp1Ratio
+    _tp2   = _entry - _risk * tpRatio
+    _zone  = (inBearOB and inBearFvg) ? "OB+FVG" : inBearOB ? "OB" : "FVG"
+    _cndl  = shootStar ? "ShootStar" : "BearEngulf"
+    _msg   = useWebhook ?
+         "{\"action\":\"sell\",\"symbol\":\"" + syminfo.ticker +
+         "\",\"tf\":\"" + timeframe.period +
+         "\",\"entry\":"    + str.tostring(_entry, "#.##") +
+         ",\"sl\":"         + str.tostring(_sl,    "#.##") +
+         ",\"tp1\":"        + str.tostring(_tp1,   "#.##") +
+         ",\"tp2\":"        + str.tostring(_tp2,   "#.##") +
+         ",\"zone\":\""     + _zone +
+         "\",\"candle\":\"" + _cndl + "\"}" :
+         "A+ SHORT  " + syminfo.ticker + " [" + timeframe.period + "m]  [" + _cndl + "]\n" +
+         "Entry  " + str.tostring(_entry, "#.##") + "\n" +
+         "SL     " + str.tostring(_sl,   "#.##") + "  (+" + str.tostring(_risk, "#.##") + ")\n" +
+         "TP1    " + str.tostring(_tp1,  "#.##") + "  (" + str.tostring(tp1Ratio, "#.#") + "R)\n" +
+         "TP2    " + str.tostring(_tp2,  "#.##") + "  (" + str.tostring(tpRatio,  "#.#") + "R)\n" +
+         "Zone   " + _zone + "  |  HTF: " + (htfBull ? "Bull" : "Bear")
+    alert(_msg, alert.freq_once_per_bar)
+
+if tp1Hit and not na(tp1Track)
+    _msg = useWebhook ?
+         "{\"action\":\"tp1\",\"symbol\":\"" + syminfo.ticker +
+         "\",\"tf\":\"" + timeframe.period +
+         "\",\"price\":" + str.tostring(tp1Track, "#.##") + "}" :
+         "TP1 HIT  " + syminfo.ticker + " [" + timeframe.period + "m]\n" +
+         "Scale out at " + str.tostring(tp1Track, "#.##") + "\nMove SL to break-even"
+    alert(_msg, alert.freq_once_per_bar)
+
+if slBreach and not na(slTrack)
+    _msg = useWebhook ?
+         "{\"action\":\"sl_hit\",\"symbol\":\"" + syminfo.ticker +
+         "\",\"tf\":\"" + timeframe.period +
+         "\",\"price\":" + str.tostring(slTrack, "#.##") + "}" :
+         "SL BREACH  " + syminfo.ticker + " [" + timeframe.period + "m]\n" +
+         "Close beyond SL at " + str.tostring(slTrack, "#.##") + " — exit position"
+    alert(_msg, alert.freq_once_per_bar)
+
+// ── Psychological Round Number Levels ────────────────────────────────────────
+var line[] psychLines = array.new<line>(0)
+
+if showPsych and barstate.islast
+    for i = 0 to array.size(psychLines) - 1
+        line.delete(array.get(psychLines, i))
+    array.clear(psychLines)
+    baseLevel = math.round(close / psychInc) * psychInc
+    for i = -psychLevels to psychLevels
+        lvl     = baseLevel + float(i) * psychInc
+        isMajor = math.abs(i) % psychMajorAt == 0
+        lWidth  = isMajor ? 2 : 1
+        lStyle  = isMajor ? line.style_solid  : line.style_dotted
+        lColor  = isMajor ? color.new(color.white, 48) : color.new(color.white, 75)
+        newLine = line.new(bar_index - 50, lvl, bar_index + 50, lvl,
+             color=lColor, width=lWidth, style=lStyle, extend=extend.right)
+        array.push(psychLines, newLine)
+
+// ── Volume Profile (VRVP) ────────────────────────────────────────────────────
+var box[] vrvpBoxes = array.new<box>(0)
+
+if showVrvp and barstate.islast
+    for i = 0 to array.size(vrvpBoxes) - 1
+        box.delete(array.get(vrvpBoxes, i))
+    array.clear(vrvpBoxes)
+
+    actualBars = math.min(vrvpBars, bar_index)
+    loPrice = low
+    hiPrice = high
+    for k = 1 to actualBars - 1
+        loPrice := math.min(loPrice, low[k])
+        hiPrice := math.max(hiPrice, high[k])
+
+    if hiPrice > loPrice
+        binSize = (hiPrice - loPrice) / float(vrvpBins)
+        binVols = array.new_float(vrvpBins, 0.0)
+
+        for k = 0 to actualBars - 1
+            midPx  = (high[k] + low[k]) * 0.5
+            binIdx = int(math.floor((midPx - loPrice) / binSize))
+            binIdx := math.max(0, math.min(vrvpBins - 1, binIdx))
+            array.set(binVols, binIdx, array.get(binVols, binIdx) + volume[k])
+
+        maxVol = array.max(binVols)
+        pocIdx = 0
+        for b = 0 to vrvpBins - 1
+            if array.get(binVols, b) >= array.get(binVols, pocIdx)
+                pocIdx := b
+
+        xRight = bar_index + 2
+        for b = 0 to vrvpBins - 1
+            volV   = array.get(binVols, b)
+            volPct = maxVol > 0 ? volV / maxVol : 0.0
+            barW   = math.max(1, int(math.round(float(vrvpWidth) * volPct)))
+            binLo  = loPrice + float(b) * binSize
+            binHi  = binLo + binSize
+            isPOC  = b == pocIdx
+            bColor = isPOC         ? color.new(#ffd700, 25) :
+                     volPct > 0.7  ? color.new(#00c076, 45) :
+                     volPct > 0.4  ? color.new(#00c076, 65) :
+                                     color.new(#00c076, 82)
+            array.push(vrvpBoxes, box.new(xRight - barW, binHi, xRight, binLo,
+                 bgcolor=bColor, border_color=color.new(color.gray, 88), border_width=0))
+
+// ── Correlation Panel (top-left) ──────────────────────────────────────────────
+var table corrTable = table.new(position.top_left, 2, 6,
+     bgcolor      = color.new(#0d0d0d, 55),
+     border_color = color.new(color.gray, 60),
+     border_width = 1,
+     frame_color  = color.new(color.gray, 40),
+     frame_width  = 1)
+
+if showCorr and barstate.islast
+    table.cell(corrTable, 0, 0, "Market Correlations",
+         text_color=color.new(color.white, 10), text_size=size.normal,
+         bgcolor=color.new(#1a1a2e, 20), text_halign=text.align_center)
+    table.merge_cells(corrTable, 0, 0, 1, 0)
+
+    corrNames  = array.from(corrPair1, corrPair2, corrPair3, corrPair4)
+    corrBiases = array.from(c1Bull,    c2Bull,    c3Bull,    c4Bull)
+
+    for r = 0 to 3
+        pName   = array.get(corrNames,  r)
+        isCBull = array.get(corrBiases, r)
+        rowBg   = r % 2 == 0 ? color.new(#0d0d0d, 60) : color.new(#111122, 55)
+        biasT   = isCBull ? "BULL ▲" : "BEAR ▼"
+        biasC   = isCBull ? colBull   : colBear
+        table.cell(corrTable, 0, r + 1, pName,
+             text_color=color.new(color.white, 35), text_size=size.small, bgcolor=rowBg)
+        table.cell(corrTable, 1, r + 1, biasT,
+             text_color=biasC, text_size=size.small, bgcolor=rowBg)
+
+    bullCnt  = (c1Bull ? 1 : 0) + (c2Bull ? 1 : 0) + (c3Bull ? 1 : 0) + (c4Bull ? 1 : 0)
+    bearCnt  = 4 - bullCnt
+    alignTxt = str.tostring(bullCnt) + "▲ / " + str.tostring(bearCnt) + "▼"
+    alignCol = bullCnt >= 3 ? colBull : bearCnt >= 3 ? colBear : color.new(#ffd700, 0)
+    alignBg  = bullCnt >= 3 ? color.new(colBull, 82) : bearCnt >= 3 ? color.new(colBear, 82) : color.new(#3a3000, 40)
+    table.cell(corrTable, 0, 5, alignTxt,
+         text_color=alignCol, text_size=size.small, bgcolor=alignBg,
+         text_halign=text.align_center)
+    table.merge_cells(corrTable, 0, 5, 1, 5)
+
+// ── Info Panel (top-right) ────────────────────────────────────────────────────
+var table panel = table.new(position.top_right, 2, 12,
+     bgcolor      = color.new(#0d0d0d, 55),
+     border_color = color.new(color.gray, 60),
+     border_width = 1,
+     frame_color  = color.new(color.gray, 40),
+     frame_width  = 1)
+
+colRowA = color.new(#0d0d0d, 60)
+colRowB = color.new(#111122, 55)
+
+if showBias and barstate.islast
+    table.cell(panel, 0, 0, "SMC Venice v9",
+         text_color=color.new(color.white, 10), text_size=size.normal,
+         bgcolor=color.new(#1a1a2e, 20), text_halign=text.align_center)
+    table.merge_cells(panel, 0, 0, 1, 0)
+
+    htfTxt = htfBull ? "BULL ▲" : htfBear ? "BEAR ▼" : "NEUTRAL"
+    htfCol = htfBull ? colBull  : htfBear ? colBear  : color.gray
+    table.cell(panel, 0, 1, "HTF Bias",
+         text_color=color.new(color.white, 35), text_size=size.small, bgcolor=colRowA)
+    table.cell(panel, 1, 1, htfTxt,
+         text_color=htfCol, text_size=size.small, bgcolor=colRowA)
+
+    vwapTxt = aboveVwap ? "Above ▲" : "Below ▼"
+    vwapCol = aboveVwap ? colBull : colBear
+    table.cell(panel, 0, 2, "VWAP",
+         text_color=color.new(color.white, 35), text_size=size.small, bgcolor=colRowB)
+    table.cell(panel, 1, 2, vwapTxt,
+         text_color=vwapCol, text_size=size.small, bgcolor=colRowB)
+
+    strTxt = mktStr == "bullish" ? "Bullish ▲" : mktStr == "bearish" ? "Bearish ▼" : "Neutral"
+    strCol = mktStr == "bullish" ? colBull : mktStr == "bearish" ? colBear : color.gray
+    table.cell(panel, 0, 3, "Structure",
+         text_color=color.new(color.white, 35), text_size=size.small, bgcolor=colRowA)
+    table.cell(panel, 1, 3, strTxt,
+         text_color=strCol, text_size=size.small, bgcolor=colRowA)
+
+    obTxt = (inBullOB or inBullFvg) ? "Demand ▲" : (inBearOB or inBearFvg) ? "Supply ▼" : "None"
+    obCol = (inBullOB or inBullFvg) ? colBull : (inBearOB or inBearFvg) ? colBear : color.new(color.white, 60)
+    table.cell(panel, 0, 4, "In Zone",
+         text_color=color.new(color.white, 35), text_size=size.small, bgcolor=colRowB)
+    table.cell(panel, 1, 4, obTxt,
+         text_color=obCol, text_size=size.small, bgcolor=colRowB)
+
+    sessTxt = inSession ? "In Session" : "Off Hours"
+    sessCol = inSession ? colBull : color.new(color.white, 60)
+    table.cell(panel, 0, 5, "Session",
+         text_color=color.new(color.white, 35), text_size=size.small, bgcolor=colRowA)
+    table.cell(panel, 1, 5, sessTxt,
+         text_color=sessCol, text_size=size.small, bgcolor=colRowA)
+
+    rsiTxt = str.tostring(rsiVal, "#.0") + (rsiVal > 50 ? " ▲" : " ▼")
+    rsiCol = rsiVal > 60 ? colBull : rsiVal < 40 ? colBear : color.new(color.white, 40)
+    table.cell(panel, 0, 6, "RSI(" + str.tostring(rsiLen) + ")",
+         text_color=color.new(color.white, 35), text_size=size.small, bgcolor=colRowB)
+    table.cell(panel, 1, 6, rsiTxt,
+         text_color=rsiCol, text_size=size.small, bgcolor=colRowB)
+
+    volTxt = volSpike ? "Spike ▲" : "Normal"
+    volCol = volSpike ? color.new(colBull, 20) : color.new(color.white, 60)
+    table.cell(panel, 0, 7, "Volume",
+         text_color=color.new(color.white, 35), text_size=size.small, bgcolor=colRowA)
+    table.cell(panel, 1, 7, volTxt,
+         text_color=volCol, text_size=size.small, bgcolor=colRowA)
+
+    readyBuy  = htfBull and mktStr == "bullish" and aboveVwap and inSession and rsiLongOk  and volOk
+    readySell = htfBear and mktStr == "bearish" and belowVwap and inSession and rsiShortOk and volOk
+    readyTxt  = readyBuy ? "LONG READY" : readySell ? "SHORT READY" : "Waiting..."
+    readyCol  = readyBuy ? colBull : readySell ? colBear : color.new(color.white, 50)
+    readyBg   = readyBuy ? color.new(colBull, 78) : readySell ? color.new(colBear, 78) : colRowB
+    table.cell(panel, 0, 8, "Signal",
+         text_color=color.new(color.white, 35), text_size=size.small, bgcolor=readyBg)
+    table.cell(panel, 1, 8, readyTxt,
+         text_color=readyCol, text_size=size.small, bgcolor=readyBg)
+
+    // ── Scorecard (row 9) ─────────────────────────────────────────────────
+    htfAligned    = htfBull or htfBear
+    vwapAligned   = htfBull ? aboveVwap : htfBear ? belowVwap : false
+    structAligned = htfBull ? (mktStr == "bullish") : htfBear ? (mktStr == "bearish") : false
+    coreCount     = (htfAligned ? 1 : 0) + (vwapAligned ? 1 : 0) + (structAligned ? 1 : 0)
+    coreAllGreen  = coreCount == 3
+    suppRsiOk     = htfBull ? rsiLongOk : htfBear ? rsiShortOk : false
+    suppCount     = (sessionOk ? 1 : 0) + (suppRsiOk ? 1 : 0) + (volOk ? 1 : 0)
+    totalScore    = coreCount + suppCount
+    htfMark    = htfAligned    ? "HTF✓" : "HTF✗"
+    vwapMark   = vwapAligned   ? "VWAP✓" : "VWAP✗"
+    strMark    = structAligned ? "STR✓" : "STR✗"
+    scoreTxt   = htfMark + "  " + vwapMark + "  " + strMark + "  │  " + str.tostring(totalScore) + "/6"
+    scoreCol   = coreAllGreen ? (htfBull ? colBull : colBear) : coreCount == 2 ? color.new(#ffd700, 0) : color.new(color.white, 55)
+    scoreBg    = coreAllGreen ? (htfBull ? color.new(colBull, 78) : color.new(colBear, 78)) : coreCount == 2 ? color.new(#3a3000, 40) : color.new(#0d0d0d, 62)
+    table.cell(panel, 0, 9, scoreTxt,
+         text_color=scoreCol, text_size=size.small, bgcolor=scoreBg,
+         text_halign=text.align_center)
+    table.merge_cells(panel, 0, 9, 1, 9)
+
+    // ── 3 EMA Status (row 10) ─────────────────────────────────────────────
+    ema3AlignBull = emaFastVal > emaMidVal and emaMidVal > emaSlowVal and close > emaFastVal
+    ema3AlignBear = emaFastVal < emaMidVal and emaMidVal < emaSlowVal and close < emaFastVal
+    emaTxt = ema3AlignBull ? "Aligned ▲" : ema3AlignBear ? "Aligned ▼" : "Mixed"
+    emaCol = ema3AlignBull ? colBull : ema3AlignBear ? colBear : color.new(color.white, 55)
+    table.cell(panel, 0, 10, "3 EMA",
+         text_color=color.new(color.white, 35), text_size=size.small, bgcolor=colRowA)
+    table.cell(panel, 1, 10, emaTxt,
+         text_color=emaCol, text_size=size.small, bgcolor=colRowA)
+
+    // ── News Window Status (row 11) ────────────────────────────────────────
+    newsTxt = inNewsWindow ? "⚠ NEWS WINDOW" : "News Clear"
+    newsCol = inNewsWindow ? color.new(#ffd700, 0) : color.new(color.white, 60)
+    newsBg  = inNewsWindow ? color.new(#3a3000, 35) : colRowB
+    table.cell(panel, 0, 11, "News",
+         text_color=color.new(color.white, 35), text_size=size.small, bgcolor=newsBg)
+    table.cell(panel, 1, 11, newsTxt,
+         text_color=newsCol, text_size=size.small, bgcolor=newsBg)
+
+// ── Trade Log + Win Rate Table (bottom-right) ─────────────────────────────────
+var table logTable = table.new(position.bottom_right, 3, 8,
+     bgcolor      = color.new(#0d0d0d, 55),
+     border_color = color.new(color.gray, 65),
+     border_width = 1,
+     frame_color  = color.new(color.gray, 45),
+     frame_width  = 1)
+
+if barstate.islast
+    table.cell(logTable, 0, 0, "Dir",
+         text_color=color.new(color.white, 30), text_size=size.tiny,
+         bgcolor=color.new(#1a1a2e, 25), text_halign=text.align_center)
+    table.cell(logTable, 1, 0, "Entry",
+         text_color=color.new(color.white, 30), text_size=size.tiny,
+         bgcolor=color.new(#1a1a2e, 25), text_halign=text.align_center)
+    table.cell(logTable, 2, 0, "Result",
+         text_color=color.new(color.white, 30), text_size=size.tiny,
+         bgcolor=color.new(#1a1a2e, 25), text_halign=text.align_center)
+
+    n = array.size(logDir)
+    for r = 0 to 4
+        row = r + 1
+        if r < n
+            dir    = array.get(logDir,    r)
+            entry  = array.get(logEntry,  r)
+            result = array.get(logResult, r)
+            dirCol = dir == "LONG" ? color.new(colBull, 10) : color.new(colBear, 10)
+            resCol = result == "Win TP1" ? color.new(colBull, 10) :
+                     result == "Loss SL"  ? color.new(colBear, 10) :
+                     color.new(color.white, 40)
+            rowBg  = r == 0 ? color.new(#111133, 50) : color.new(#0d0d0d, 60)
+            table.cell(logTable, 0, row, dir,
+                 text_color=dirCol, text_size=size.tiny, bgcolor=rowBg,
+                 text_halign=text.align_center)
+            table.cell(logTable, 1, row, str.tostring(entry, "#.##"),
+                 text_color=color.new(color.white, 25), text_size=size.tiny, bgcolor=rowBg,
+                 text_halign=text.align_right)
+            table.cell(logTable, 2, row, result,
+                 text_color=resCol, text_size=size.tiny, bgcolor=rowBg,
+                 text_halign=text.align_center)
+        else
+            emptyBg = color.new(#0d0d0d, 65)
+            table.cell(logTable, 0, row, "—",
+                 text_color=color.new(color.white, 70), text_size=size.tiny, bgcolor=emptyBg,
+                 text_halign=text.align_center)
+            table.cell(logTable, 1, row, "—",
+                 text_color=color.new(color.white, 70), text_size=size.tiny, bgcolor=emptyBg,
+                 text_halign=text.align_right)
+            table.cell(logTable, 2, row, "—",
+                 text_color=color.new(color.white, 70), text_size=size.tiny, bgcolor=emptyBg,
+                 text_halign=text.align_center)
+
+    table.cell(logTable, 0, 6, "Win Rate",
+         text_color=color.new(color.white, 40), text_size=size.tiny,
+         bgcolor=color.new(#1a1a2e, 30), text_halign=text.align_center)
+    table.merge_cells(logTable, 0, 6, 2, 6)
+
+    totalClosed = totalWins + totalLosses
+    winRate     = totalClosed > 0 ? (float(totalWins) / float(totalClosed)) * 100.0 : 0.0
+    wrTxt = totalClosed > 0 ?
+         str.tostring(winRate, "#.0") + "%  (" + str.tostring(totalWins) + "W / " + str.tostring(totalLosses) + "L)" :
+         "No closed trades"
+    wrCol = winRate >= 60 ? color.new(colBull, 0) : winRate >= 40 ? color.new(#ffd700, 0) :
+            totalClosed == 0 ? color.new(color.white, 50) : color.new(colBear, 0)
+    wrBg  = winRate >= 60 ? color.new(colBull, 88) : winRate >= 40 ? color.new(#ffd700, 90) :
+            totalClosed == 0 ? color.new(#0d0d0d, 60) : color.new(colBear, 88)
+    table.cell(logTable, 0, 7, wrTxt,
+         text_color=wrCol, text_size=size.small, bgcolor=wrBg,
+         text_halign=text.align_center)
+    table.merge_cells(logTable, 0, 7, 2, 7)
