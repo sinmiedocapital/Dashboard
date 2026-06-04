@@ -1,0 +1,1114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sin Miedo Capital — P/L Dashboard</title>
+
+  <!-- Tailwind CSS Play CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              bg:     '#0f1117',
+              card:   '#1a1d2e',
+              border: '#2d3148',
+              green:  '#10b981',
+              red:    '#ef4444',
+              amber:  '#f59e0b',
+              muted:  '#6b7280',
+              input:  '#0f1117',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+
+  <!-- React 18 -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+
+  <!-- Babel Standalone (JSX transpilation) -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    input[type=number]::-webkit-inner-spin-button,
+    input[type=number]::-webkit-outer-spin-button { opacity: 1; }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #0f1117; }
+    ::-webkit-scrollbar-thumb { background: #2d3148; border-radius: 3px; }
+    .tab-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .tab-scroll::-webkit-scrollbar { height: 2px; }
+  </style>
+</head>
+<body class="bg-[#0f1117] text-white min-h-screen">
+  <div id="root">
+    <div style="color:#6b7280;padding:2rem;font-family:sans-serif;text-align:center;">
+      Loading Sin Miedo Capital Dashboard...
+    </div>
+  </div>
+
+  <script type="text/babel">
+    /* ─── Constants ─────────────────────────────────────────── */
+    const STORAGE_KEY    = 'smcPLEntries';
+    const MONTHLY_TARGET = 50000;
+    const DAILY_TARGET   = Math.round(50000 / 21); // $2,381
+
+    const TABS = [
+      { id: 'today',     label: 'TODAY' },
+      { id: 'week',      label: 'THIS WEEK' },
+      { id: 'month',     label: 'THIS MONTH' },
+      { id: 'beta',      label: 'BETA USERS' },
+      { id: 'community', label: 'COMMUNITY' },
+      { id: 'export',    label: 'EXPORT' },
+    ];
+
+    /* ─── Utility Functions ─────────────────────────────────── */
+    function todayISO() {
+      return new Date().toISOString().slice(0, 10);
+    }
+
+    function formatDate(iso) {
+      const [y, m, d] = iso.split('-');
+      const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      return `${months[parseInt(m, 10) - 1]} ${parseInt(d, 10)}, ${y}`;
+    }
+
+    function formatCurrency(n, showSign = false) {
+      const abs = Math.abs(n);
+      const str = abs.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+      if (n < 0) return `-$${str}`;
+      if (showSign && n > 0) return `+$${str}`;
+      return `$${str}`;
+    }
+
+    function plColor(n) {
+      if (n > 0) return '#10b981';
+      if (n < 0) return '#ef4444';
+      return '#6b7280';
+    }
+
+    function loadEntries() {
+      try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
+      catch { return []; }
+    }
+
+    function saveEntries(entries) {
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(entries)); }
+      catch {}
+    }
+
+    function upsertEntry(entries, newEntry) {
+      const idx = entries.findIndex(e => e.date === newEntry.date);
+      const stamped = { ...newEntry, savedAt: new Date().toISOString() };
+      if (idx >= 0) {
+        const next = [...entries];
+        next[idx] = stamped;
+        return next;
+      }
+      return [...entries, stamped];
+    }
+
+    function deleteEntry(entries, date) {
+      return entries.filter(e => e.date !== date);
+    }
+
+    function makeEmptyEntry(date) {
+      return {
+        date,
+        lucidPL: '',
+        tradeifyPL: '',
+        totalTrades: '',
+        winningTrades: '',
+        notes: '',
+        betaUsers: [],
+        communityAttendance: '',
+        communityNotes: '',
+      };
+    }
+
+    /* ─── Compute Helpers ───────────────────────────────────── */
+    function combinedPL(e) {
+      return (Number(e.lucidPL) || 0) + (Number(e.tradeifyPL) || 0);
+    }
+
+    function winRate(e) {
+      const t = Number(e.totalTrades) || 0;
+      const w = Number(e.winningTrades) || 0;
+      if (!t) return null;
+      return (w / t) * 100;
+    }
+
+    function getMonthEntries(entries, yearMonth) {
+      return entries.filter(e => e.date.startsWith(yearMonth));
+    }
+
+    function getWeekEntries(entries) {
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 6);
+      const cutoffStr = cutoff.toISOString().slice(0, 10);
+      return entries.filter(e => e.date >= cutoffStr);
+    }
+
+    function monthlyTotal(entries) {
+      return entries.reduce((s, e) => s + combinedPL(e), 0);
+    }
+
+    function avgDaily(entries) {
+      if (!entries.length) return 0;
+      return monthlyTotal(entries) / entries.length;
+    }
+
+    function overallWinRate(entries) {
+      const totalT = entries.reduce((s, e) => s + (Number(e.totalTrades) || 0), 0);
+      const totalW = entries.reduce((s, e) => s + (Number(e.winningTrades) || 0), 0);
+      if (!totalT) return null;
+      return (totalW / totalT) * 100;
+    }
+
+    function bestDay(entries) {
+      if (!entries.length) return null;
+      return entries.reduce((best, e) => combinedPL(e) > combinedPL(best) ? e : best);
+    }
+
+    function worstDay(entries) {
+      if (!entries.length) return null;
+      return entries.reduce((worst, e) => combinedPL(e) < combinedPL(worst) ? e : worst);
+    }
+
+    function daysUntilMonthEnd() {
+      const now = new Date();
+      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      return Math.max(0, Math.ceil((lastDay - now) / (1000 * 60 * 60 * 24)));
+    }
+
+    /* ─── Primitive Components ──────────────────────────────── */
+    function MetricCard({ label, value, sub, color, small }) {
+      return (
+        <div className="bg-[#1a1d2e] border border-[#2d3148] rounded-xl p-4">
+          <p className="text-[#6b7280] text-xs font-semibold uppercase tracking-wider mb-1">{label}</p>
+          <p
+            className={`font-bold ${small ? 'text-xl' : 'text-2xl'}`}
+            style={{ color: color || '#ffffff' }}
+          >
+            {value}
+          </p>
+          {sub && <p className="text-xs text-[#6b7280] mt-1">{sub}</p>}
+        </div>
+      );
+    }
+
+    function ProgressBar({ current, target, label }) {
+      const pct   = Math.min(100, Math.max(0, (current / target) * 100));
+      const color = current >= 0 ? '#10b981' : '#ef4444';
+      return (
+        <div className="bg-[#1a1d2e] border border-[#2d3148] rounded-xl p-4 mb-4">
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-xs text-[#6b7280] font-semibold uppercase tracking-wider">
+              {label || 'Monthly Progress'}
+            </span>
+            <span className="text-sm font-bold" style={{ color }}>
+              {formatCurrency(current)} <span className="text-[#6b7280] font-normal">/ {formatCurrency(target)}</span>
+            </span>
+          </div>
+          <div className="w-full h-3 bg-[#0f1117] rounded-full overflow-hidden">
+            <div
+              className="h-full rounded-full transition-all duration-500"
+              style={{ width: `${pct}%`, backgroundColor: color }}
+            />
+          </div>
+          <div className="flex justify-between mt-1">
+            <span className="text-xs text-[#6b7280]">{pct.toFixed(1)}% of goal</span>
+            <span className="text-xs text-[#6b7280]">{daysUntilMonthEnd()} days left</span>
+          </div>
+        </div>
+      );
+    }
+
+    const INPUT_CLS = "w-full bg-[#0f1117] border border-[#2d3148] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#10b981] focus:ring-1 focus:ring-[#10b981] transition-colors placeholder-[#6b7280]";
+    const LABEL_CLS = "block text-xs font-semibold text-[#6b7280] uppercase tracking-wider mb-1";
+
+    function InputField({ label, value, onChange, type = 'text', placeholder, min, step }) {
+      return (
+        <div>
+          {label && <label className={LABEL_CLS}>{label}</label>}
+          <input
+            type={type}
+            value={value}
+            onChange={e => onChange(e.target.value)}
+            placeholder={placeholder}
+            min={min}
+            step={step}
+            className={INPUT_CLS}
+          />
+        </div>
+      );
+    }
+
+    function TextareaField({ label, value, onChange, placeholder, rows = 2 }) {
+      return (
+        <div>
+          {label && <label className={LABEL_CLS}>{label}</label>}
+          <textarea
+            value={value}
+            onChange={e => onChange(e.target.value)}
+            placeholder={placeholder}
+            rows={rows}
+            className={INPUT_CLS + ' resize-none'}
+          />
+        </div>
+      );
+    }
+
+    /* ─── BetaUserList ──────────────────────────────────────── */
+    function BetaUserList({ users, onChange }) {
+      function addUser() {
+        onChange([...users, { name: '', pl: '', feedback: '' }]);
+      }
+      function removeUser(idx) {
+        onChange(users.filter((_, i) => i !== idx));
+      }
+      function updateUser(idx, field, val) {
+        onChange(users.map((u, i) => i === idx ? { ...u, [field]: val } : u));
+      }
+
+      return (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <label className={LABEL_CLS}>Beta Users ({users.length})</label>
+            <button
+              type="button"
+              onClick={addUser}
+              className="text-xs text-[#10b981] border border-[#10b981] px-2 py-1 rounded hover:bg-[#10b981] hover:text-white transition-colors"
+            >
+              + Add User
+            </button>
+          </div>
+          {users.map((user, idx) => (
+            <div key={idx} className="bg-[#0f1117] border border-[#2d3148] rounded-lg p-2 space-y-2">
+              <div className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center">
+                <input
+                  type="text"
+                  placeholder="Name"
+                  value={user.name}
+                  onChange={e => updateUser(idx, 'name', e.target.value)}
+                  className={INPUT_CLS}
+                />
+                <input
+                  type="number"
+                  placeholder="P/L $"
+                  value={user.pl}
+                  onChange={e => updateUser(idx, 'pl', e.target.value)}
+                  className={INPUT_CLS}
+                />
+                <button
+                  type="button"
+                  onClick={() => removeUser(idx)}
+                  className="text-[#ef4444] hover:text-white text-xl leading-none px-2 py-1 transition-colors"
+                  title="Remove"
+                >
+                  ×
+                </button>
+              </div>
+              <input
+                type="text"
+                placeholder="Feedback (optional)"
+                value={user.feedback}
+                onChange={e => updateUser(idx, 'feedback', e.target.value)}
+                className={INPUT_CLS}
+              />
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    /* ─── PLChart ────────────────────────────────────────────── */
+    function PLChart({ entries }) {
+      const canvasRef = React.useRef(null);
+      const chartRef  = React.useRef(null);
+
+      React.useEffect(() => {
+        if (!canvasRef.current) return;
+        if (chartRef.current) { chartRef.current.destroy(); chartRef.current = null; }
+
+        const sorted = [...entries].sort((a, b) => a.date.localeCompare(b.date));
+        const labels = sorted.map(e => e.date.slice(5));
+        const data   = sorted.map(e => combinedPL(e));
+        const pointColors = data.map(v => v >= 0 ? '#10b981' : '#ef4444');
+
+        chartRef.current = new Chart(canvasRef.current, {
+          type: 'line',
+          data: {
+            labels,
+            datasets: [
+              {
+                label: 'Daily P/L',
+                data,
+                borderColor: '#10b981',
+                backgroundColor: 'rgba(16,185,129,0.07)',
+                pointBackgroundColor: pointColors,
+                pointBorderColor: pointColors,
+                pointRadius: 5,
+                pointHoverRadius: 7,
+                tension: 0.3,
+                fill: true,
+              },
+              {
+                label: `Daily Target ($${DAILY_TARGET.toLocaleString()})`,
+                data: sorted.map(() => DAILY_TARGET),
+                borderColor: '#f59e0b',
+                borderDash: [6, 3],
+                borderWidth: 1.5,
+                pointRadius: 0,
+                fill: false,
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+              legend: {
+                display: true,
+                labels: { color: '#6b7280', font: { size: 11 }, boxWidth: 20 }
+              },
+              tooltip: {
+                backgroundColor: '#1a1d2e',
+                borderColor: '#2d3148',
+                borderWidth: 1,
+                titleColor: '#e2e8f0',
+                bodyColor: '#6b7280',
+                callbacks: {
+                  label: ctx => `${ctx.dataset.label}: ${formatCurrency(ctx.raw)}`
+                }
+              }
+            },
+            scales: {
+              x: {
+                ticks: { color: '#6b7280', font: { size: 11 } },
+                grid:  { color: '#2d3148' },
+              },
+              y: {
+                ticks: {
+                  color: '#6b7280',
+                  font: { size: 11 },
+                  callback: v => formatCurrency(v)
+                },
+                grid: { color: '#2d3148' },
+              }
+            }
+          }
+        });
+
+        return () => { if (chartRef.current) { chartRef.current.destroy(); chartRef.current = null; } };
+      }, [entries]);
+
+      if (!entries.length) {
+        return (
+          <div className="h-48 flex items-center justify-center text-[#6b7280] text-sm border border-[#2d3148] rounded-xl">
+            No data yet — save entries to see the chart
+          </div>
+        );
+      }
+
+      return (
+        <div className="bg-[#1a1d2e] border border-[#2d3148] rounded-xl p-4">
+          <p className="text-xs text-[#6b7280] font-semibold uppercase tracking-wider mb-3">Daily P/L Chart</p>
+          <div className="relative h-56 w-full">
+            <canvas ref={canvasRef}></canvas>
+          </div>
+        </div>
+      );
+    }
+
+    /* ─── DayForm ────────────────────────────────────────────── */
+    function DayForm({ entry, onSave }) {
+      const [lucidPL,             setLucidPL]             = React.useState(entry.lucidPL);
+      const [tradeifyPL,          setTradeifyPL]          = React.useState(entry.tradeifyPL);
+      const [totalTrades,         setTotalTrades]         = React.useState(entry.totalTrades);
+      const [winningTrades,       setWinningTrades]       = React.useState(entry.winningTrades);
+      const [notes,               setNotes]               = React.useState(entry.notes);
+      const [betaUsers,           setBetaUsers]           = React.useState(entry.betaUsers);
+      const [communityAttendance, setCommunityAttendance] = React.useState(entry.communityAttendance);
+      const [communityNotes,      setCommunityNotes]      = React.useState(entry.communityNotes);
+      const [saved, setSaved] = React.useState(false);
+
+      React.useEffect(() => {
+        setLucidPL(entry.lucidPL);
+        setTradeifyPL(entry.tradeifyPL);
+        setTotalTrades(entry.totalTrades);
+        setWinningTrades(entry.winningTrades);
+        setNotes(entry.notes);
+        setBetaUsers(entry.betaUsers);
+        setCommunityAttendance(entry.communityAttendance);
+        setCommunityNotes(entry.communityNotes);
+        setSaved(false);
+      }, [entry.date]);
+
+      const liveTotal = (Number(lucidPL) || 0) + (Number(tradeifyPL) || 0);
+      const liveWR    = (Number(totalTrades) > 0)
+        ? ((Number(winningTrades) || 0) / Number(totalTrades) * 100).toFixed(1)
+        : null;
+      const targetHit = liveTotal >= DAILY_TARGET;
+
+      function handleSubmit(e) {
+        e.preventDefault();
+        onSave({
+          date:                entry.date,
+          lucidPL:             Number(lucidPL)             || 0,
+          tradeifyPL:          Number(tradeifyPL)          || 0,
+          totalTrades:         Number(totalTrades)         || 0,
+          winningTrades:       Number(winningTrades)       || 0,
+          notes,
+          betaUsers:           betaUsers.map(u => ({ ...u, pl: Number(u.pl) || 0 })),
+          communityAttendance: Number(communityAttendance) || 0,
+          communityNotes,
+        });
+        setSaved(true);
+        setTimeout(() => setSaved(false), 2500);
+      }
+
+      return (
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Live preview strip */}
+          <div className="grid grid-cols-3 gap-2">
+            <div className="bg-[#0f1117] border border-[#2d3148] rounded-lg p-3 text-center">
+              <p className="text-[#6b7280] text-xs mb-1">Combined P/L</p>
+              <p className="text-lg font-bold" style={{ color: plColor(liveTotal) }}>
+                {formatCurrency(liveTotal)}
+              </p>
+            </div>
+            <div className="bg-[#0f1117] border border-[#2d3148] rounded-lg p-3 text-center">
+              <p className="text-[#6b7280] text-xs mb-1">Win Rate</p>
+              <p className="text-lg font-bold text-white">
+                {liveWR !== null ? `${liveWR}%` : '—'}
+              </p>
+            </div>
+            <div className="bg-[#0f1117] border border-[#2d3148] rounded-lg p-3 text-center">
+              <p className="text-[#6b7280] text-xs mb-1">Target</p>
+              <p className="text-lg font-bold" style={{ color: targetHit ? '#10b981' : '#ef4444' }}>
+                {targetHit ? 'HIT ✓' : 'MISS'}
+              </p>
+            </div>
+          </div>
+
+          {/* P/L inputs */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <InputField
+              label="Lucid Account P/L ($)"
+              value={lucidPL}
+              onChange={setLucidPL}
+              type="number"
+              placeholder="0"
+            />
+            <InputField
+              label="Tradeify Account P/L ($)"
+              value={tradeifyPL}
+              onChange={setTradeifyPL}
+              type="number"
+              placeholder="0"
+            />
+          </div>
+
+          {/* Trade stats */}
+          <div className="grid grid-cols-2 gap-3">
+            <InputField
+              label="Total Trades"
+              value={totalTrades}
+              onChange={setTotalTrades}
+              type="number"
+              placeholder="0"
+              min="0"
+            />
+            <InputField
+              label="Winning Trades"
+              value={winningTrades}
+              onChange={setWinningTrades}
+              type="number"
+              placeholder="0"
+              min="0"
+            />
+          </div>
+
+          {/* Notes */}
+          <TextareaField
+            label="Trade Notes"
+            value={notes}
+            onChange={setNotes}
+            placeholder="What worked today? Key observations..."
+            rows={2}
+          />
+
+          {/* Community section */}
+          <div className="border border-[#2d3148] rounded-xl p-3 space-y-3">
+            <p className="text-xs font-semibold text-[#6b7280] uppercase tracking-wider">
+              Sunday Community Session
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <InputField
+                label="Attendance"
+                value={communityAttendance}
+                onChange={setCommunityAttendance}
+                type="number"
+                placeholder="0"
+                min="0"
+              />
+              <TextareaField
+                label="Session Notes"
+                value={communityNotes}
+                onChange={setCommunityNotes}
+                placeholder="Topics, insights..."
+                rows={1}
+              />
+            </div>
+          </div>
+
+          {/* Beta users */}
+          <div className="border border-[#2d3148] rounded-xl p-3">
+            <BetaUserList users={betaUsers} onChange={setBetaUsers} />
+          </div>
+
+          {/* Submit */}
+          <button
+            type="submit"
+            className="w-full py-3 rounded-lg text-sm font-bold tracking-wider transition-all duration-150"
+            style={{
+              backgroundColor: saved ? '#059669' : '#10b981',
+              color: '#ffffff',
+            }}
+          >
+            {saved ? 'SAVED ✓' : 'SAVE DAY'}
+          </button>
+        </form>
+      );
+    }
+
+    /* ─── TODAY TAB ─────────────────────────────────────────── */
+    function TodayTab({ entry, onSave }) {
+      const isSaved   = !!entry.savedAt;
+      const total     = combinedPL(entry);
+      const wr        = winRate(entry);
+      const targetHit = total >= DAILY_TARGET;
+      const toTarget  = DAILY_TARGET - total;
+
+      return (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-bold">Today's Entry</h2>
+              <p className="text-[#6b7280] text-xs">{formatDate(entry.date)} · Daily target: {formatCurrency(DAILY_TARGET)}</p>
+            </div>
+            {isSaved && (
+              <span className="text-xs bg-[#10b981]/10 text-[#10b981] border border-[#10b981]/20 px-2 py-1 rounded-full">
+                Saved
+              </span>
+            )}
+          </div>
+
+          <DayForm entry={entry} onSave={onSave} />
+
+          {isSaved && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
+              <MetricCard
+                label="Combined P/L"
+                value={formatCurrency(total)}
+                color={plColor(total)}
+              />
+              <MetricCard
+                label="Win Rate"
+                value={wr !== null ? `${wr.toFixed(1)}%` : '—'}
+                color={wr !== null && wr >= 50 ? '#10b981' : '#ef4444'}
+              />
+              <MetricCard
+                label="Target"
+                value={targetHit ? 'HIT ✓' : 'MISS'}
+                sub={targetHit ? `${formatCurrency(total - DAILY_TARGET)} over` : `${formatCurrency(toTarget)} to go`}
+                color={targetHit ? '#10b981' : '#ef4444'}
+              />
+              <MetricCard
+                label="Trades"
+                value={entry.totalTrades || 0}
+                sub={`${entry.winningTrades || 0} winners`}
+              />
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    /* ─── WEEK TAB ──────────────────────────────────────────── */
+    function WeekTab({ entries }) {
+      const sorted = [...entries].sort((a, b) => a.date.localeCompare(b.date));
+      const total  = monthlyTotal(entries);
+      const avg    = avgDaily(entries);
+      const wr     = overallWinRate(entries);
+      const daysHit = entries.filter(e => combinedPL(e) >= DAILY_TARGET).length;
+
+      return (
+        <div className="space-y-4">
+          <div>
+            <h2 className="text-lg font-bold">This Week</h2>
+            <p className="text-[#6b7280] text-xs">Rolling 7 days · {entries.length} sessions logged</p>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <MetricCard label="7-Day P/L"     value={formatCurrency(total)} color={plColor(total)} />
+            <MetricCard label="Avg Daily"     value={formatCurrency(avg)}   color={plColor(avg)} />
+            <MetricCard label="Win Rate"      value={wr !== null ? `${wr.toFixed(1)}%` : '—'} color={wr !== null && wr >= 50 ? '#10b981' : '#ef4444'} />
+            <MetricCard label="Days Hit Target" value={`${daysHit}/${entries.length}`} color={daysHit > 0 ? '#10b981' : '#ef4444'} />
+          </div>
+
+          {/* Day-by-day breakdown */}
+          {sorted.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-[#6b7280] uppercase tracking-wider">Day Breakdown</p>
+              {sorted.map(e => {
+                const pl  = combinedPL(e);
+                const wr2 = winRate(e);
+                const hit = pl >= DAILY_TARGET;
+                return (
+                  <div key={e.date} className="bg-[#1a1d2e] border border-[#2d3148] rounded-xl p-3 flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-semibold">{formatDate(e.date)}</p>
+                      <p className="text-xs text-[#6b7280]">
+                        {e.totalTrades || 0} trades · {wr2 !== null ? `${wr2.toFixed(0)}% WR` : 'no trades'}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold text-sm" style={{ color: plColor(pl) }}>{formatCurrency(pl)}</p>
+                      <p className="text-xs" style={{ color: hit ? '#10b981' : '#ef4444' }}>
+                        {hit ? 'Target hit' : 'Below target'}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {entries.length === 0 && (
+            <p className="text-[#6b7280] text-sm py-8 text-center">No entries in the past 7 days.</p>
+          )}
+        </div>
+      );
+    }
+
+    /* ─── MONTH TAB ─────────────────────────────────────────── */
+    function MonthTab({ entries, currentYM }) {
+      const sorted   = [...entries].sort((a, b) => a.date.localeCompare(b.date));
+      const total    = monthlyTotal(entries);
+      const avg      = avgDaily(entries);
+      const wr       = overallWinRate(entries);
+      const best     = bestDay(entries);
+      const worst    = worstDay(entries);
+      const daysHit  = entries.filter(e => combinedPL(e) >= DAILY_TARGET).length;
+
+      const [year, month] = (currentYM || todayISO().slice(0, 7)).split('-');
+      const monthName = ['January','February','March','April','May','June',
+                         'July','August','September','October','November','December'][parseInt(month, 10) - 1];
+
+      return (
+        <div className="space-y-4">
+          <div>
+            <h2 className="text-lg font-bold">{monthName} {year}</h2>
+            <p className="text-[#6b7280] text-xs">{entries.length} sessions · Goal: {formatCurrency(MONTHLY_TARGET)}</p>
+          </div>
+
+          <ProgressBar current={total} target={MONTHLY_TARGET} />
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <MetricCard label="Month P/L"     value={formatCurrency(total)} color={plColor(total)} />
+            <MetricCard label="Avg Daily"     value={formatCurrency(avg)}   color={plColor(avg)} small />
+            <MetricCard label="Win Rate"      value={wr !== null ? `${wr.toFixed(1)}%` : '—'} color={wr !== null && wr >= 50 ? '#10b981' : '#ef4444'} />
+            <MetricCard label="Days Hit Target" value={`${daysHit}/${entries.length}`} color={daysHit > 0 ? '#10b981' : '#6b7280'} />
+          </div>
+
+          {(best || worst) && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {best && (
+                <MetricCard
+                  label="Best Day"
+                  value={formatCurrency(combinedPL(best))}
+                  sub={formatDate(best.date)}
+                  color="#10b981"
+                />
+              )}
+              {worst && (
+                <MetricCard
+                  label="Worst Day"
+                  value={formatCurrency(combinedPL(worst))}
+                  sub={formatDate(worst.date)}
+                  color="#ef4444"
+                />
+              )}
+            </div>
+          )}
+
+          <PLChart entries={sorted} />
+
+          {entries.length === 0 && (
+            <p className="text-[#6b7280] text-sm py-4 text-center">No entries this month yet.</p>
+          )}
+        </div>
+      );
+    }
+
+    /* ─── BETA USERS TAB ─────────────────────────────────────── */
+    function BetaUserSummaryCard({ user }) {
+      return (
+        <div className="bg-[#1a1d2e] border border-[#2d3148] rounded-xl p-4 flex items-center justify-between">
+          <div>
+            <p className="font-semibold text-sm">{user.name}</p>
+            <p className="text-xs text-[#6b7280]">
+              {user.dayCount} {user.dayCount === 1 ? 'day' : 'days'} logged · {user.profitablePct}% profitable days
+            </p>
+            {user.latestFeedback && (
+              <p className="text-xs text-[#6b7280] italic mt-1">"{user.latestFeedback}"</p>
+            )}
+          </div>
+          <div className="text-right">
+            <p className="font-bold" style={{ color: plColor(user.totalPL) }}>
+              {formatCurrency(user.totalPL)}
+            </p>
+            <p className="text-xs text-[#6b7280]">avg {formatCurrency(user.avgPL)}/day</p>
+          </div>
+        </div>
+      );
+    }
+
+    function BetaUsersTab({ allEntries }) {
+      const userMap = {};
+      allEntries.forEach(entry => {
+        (entry.betaUsers || []).forEach(u => {
+          if (!u.name) return;
+          if (!userMap[u.name]) userMap[u.name] = { totalPL: 0, dayCount: 0, profitableDays: 0, latestFeedback: '' };
+          userMap[u.name].totalPL        += Number(u.pl) || 0;
+          userMap[u.name].dayCount       += 1;
+          userMap[u.name].profitableDays += (Number(u.pl) || 0) > 0 ? 1 : 0;
+          if (u.feedback) userMap[u.name].latestFeedback = u.feedback;
+        });
+      });
+
+      const users = Object.entries(userMap).map(([name, s]) => ({
+        name,
+        totalPL:       s.totalPL,
+        dayCount:      s.dayCount,
+        avgPL:         s.dayCount ? Math.round(s.totalPL / s.dayCount) : 0,
+        profitablePct: s.dayCount ? Math.round(s.profitableDays / s.dayCount * 100) : 0,
+        latestFeedback: s.latestFeedback,
+      })).sort((a, b) => b.totalPL - a.totalPL);
+
+      const activeCount     = users.length;
+      const profitableCount = users.filter(u => u.totalPL > 0).length;
+      const profitabilityPct = activeCount ? Math.round(profitableCount / activeCount * 100) : 0;
+
+      return (
+        <div className="space-y-4">
+          <div>
+            <h2 className="text-lg font-bold">Beta Users</h2>
+            <p className="text-[#6b7280] text-xs">Add users daily in the TODAY tab</p>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <MetricCard label="Active Users"    value={activeCount}          />
+            <MetricCard label="Profitable"      value={profitableCount}      color="#10b981" />
+            <MetricCard label="Profitability"   value={`${profitabilityPct}%`} color={profitabilityPct >= 50 ? '#10b981' : '#ef4444'} />
+          </div>
+
+          <div className="space-y-2">
+            {users.map(u => <BetaUserSummaryCard key={u.name} user={u} />)}
+          </div>
+
+          {users.length === 0 && (
+            <p className="text-[#6b7280] text-sm py-8 text-center">
+              No beta users logged yet.<br />Add them in the TODAY tab when saving a day.
+            </p>
+          )}
+        </div>
+      );
+    }
+
+    /* ─── COMMUNITY TAB ─────────────────────────────────────── */
+    function CommunityTab({ entries }) {
+      const sessions = [...entries]
+        .filter(e => (Number(e.communityAttendance) || 0) > 0 || e.communityNotes)
+        .sort((a, b) => b.date.localeCompare(a.date));
+
+      const totalAttendance = sessions.reduce((s, e) => s + (Number(e.communityAttendance) || 0), 0);
+      const avgAttendance   = sessions.length ? (totalAttendance / sessions.length).toFixed(1) : 0;
+
+      return (
+        <div className="space-y-4">
+          <div>
+            <h2 className="text-lg font-bold">Community Sessions</h2>
+            <p className="text-[#6b7280] text-xs">Sunday brainstorm tracking</p>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <MetricCard label="Sessions"        value={sessions.length}   />
+            <MetricCard label="Total Attended"  value={totalAttendance}   color="#10b981" />
+            <MetricCard label="Avg per Session" value={avgAttendance}      />
+          </div>
+
+          <div className="space-y-3">
+            {sessions.map(e => (
+              <div key={e.date} className="bg-[#1a1d2e] border border-[#2d3148] rounded-xl p-4">
+                <div className="flex items-start justify-between mb-2">
+                  <div>
+                    <p className="font-semibold text-sm">{formatDate(e.date)}</p>
+                    <p className="text-xs text-[#6b7280]">
+                      {e.communityAttendance || 0} {e.communityAttendance === 1 ? 'person' : 'people'} attended
+                    </p>
+                  </div>
+                  <span className="text-xs bg-[#10b981]/10 text-[#10b981] border border-[#10b981]/20 px-2 py-1 rounded-full">
+                    Session
+                  </span>
+                </div>
+                {e.communityNotes && (
+                  <p className="text-sm text-[#e2e8f0] bg-[#0f1117] rounded-lg p-2 mt-2">
+                    {e.communityNotes}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {sessions.length === 0 && (
+            <p className="text-[#6b7280] text-sm py-8 text-center">
+              No community sessions logged yet.<br />Fill in attendance when saving a day.
+            </p>
+          )}
+        </div>
+      );
+    }
+
+    /* ─── EXPORT TAB ────────────────────────────────────────── */
+    function ExportTab({ allEntries }) {
+      const [exported, setExported] = React.useState('');
+
+      function triggerDownload(content, filename, mimeType) {
+        const blob = new Blob([content], { type: mimeType });
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href     = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+
+      function exportJSON() {
+        const json = JSON.stringify(allEntries, null, 2);
+        const date = todayISO();
+        triggerDownload(json, `smc-pl-${date}.json`, 'application/json');
+        setExported('json');
+        setTimeout(() => setExported(''), 2000);
+      }
+
+      function exportCSV() {
+        const headers = [
+          'date','lucidPL','tradeifyPL','combinedPL',
+          'totalTrades','winningTrades','winRate',
+          'notes','communityAttendance','communityNotes',
+          'betaUserCount','betaUserNames','betaUserPLs'
+        ];
+
+        const escape = str => `"${String(str || '').replace(/"/g, '""')}"`;
+
+        const rows = [...allEntries]
+          .sort((a, b) => a.date.localeCompare(b.date))
+          .map(e => {
+            const pl  = combinedPL(e);
+            const wr2 = e.totalTrades ? ((e.winningTrades / e.totalTrades) * 100).toFixed(1) : '0.0';
+            return [
+              e.date,
+              e.lucidPL,
+              e.tradeifyPL,
+              pl,
+              e.totalTrades,
+              e.winningTrades,
+              wr2,
+              escape(e.notes),
+              e.communityAttendance,
+              escape(e.communityNotes),
+              e.betaUsers.length,
+              escape(e.betaUsers.map(u => u.name).join('; ')),
+              escape(e.betaUsers.map(u => u.pl).join('; ')),
+            ].join(',');
+          });
+
+        const csv = [headers.join(','), ...rows].join('\n');
+        const date = todayISO();
+        triggerDownload(csv, `smc-pl-${date}.csv`, 'text/csv');
+        setExported('csv');
+        setTimeout(() => setExported(''), 2000);
+      }
+
+      function clearAllData() {
+        if (window.confirm('Delete ALL saved data? This cannot be undone.')) {
+          try { localStorage.removeItem(STORAGE_KEY); }
+          catch {}
+          window.location.reload();
+        }
+      }
+
+      return (
+        <div className="space-y-4 max-w-sm">
+          <div>
+            <h2 className="text-lg font-bold">Export Data</h2>
+            <p className="text-[#6b7280] text-xs">
+              {allEntries.length} {allEntries.length === 1 ? 'entry' : 'entries'} in localStorage
+            </p>
+          </div>
+
+          <button
+            onClick={exportJSON}
+            className="w-full bg-[#1a1d2e] border border-[#2d3148] hover:border-[#10b981] text-white py-3 rounded-xl text-sm font-semibold transition-colors flex items-center justify-between px-4"
+          >
+            <span>Download JSON</span>
+            <span className="text-[#6b7280] text-xs">{exported === 'json' ? '✓ Downloaded' : '.json'}</span>
+          </button>
+
+          <button
+            onClick={exportCSV}
+            className="w-full bg-[#1a1d2e] border border-[#2d3148] hover:border-[#10b981] text-white py-3 rounded-xl text-sm font-semibold transition-colors flex items-center justify-between px-4"
+          >
+            <span>Download CSV</span>
+            <span className="text-[#6b7280] text-xs">{exported === 'csv' ? '✓ Downloaded' : '.csv'}</span>
+          </button>
+
+          <div className="pt-6 border-t border-[#2d3148]">
+            <button
+              onClick={clearAllData}
+              className="w-full border border-[#ef4444]/30 hover:border-[#ef4444] text-[#ef4444] py-3 rounded-xl text-sm font-semibold transition-colors"
+            >
+              Clear All Data
+            </button>
+            <p className="text-[#6b7280] text-xs text-center mt-2">This permanently deletes all entries</p>
+          </div>
+        </div>
+      );
+    }
+
+    /* ─── TabBar ────────────────────────────────────────────── */
+    function TabBar({ activeTab, onTabChange }) {
+      return (
+        <div className="tab-scroll">
+          <div className="flex gap-1 p-1 bg-[#1a1d2e] rounded-xl mb-6 min-w-max">
+            {TABS.map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => onTabChange(tab.id)}
+                className={`px-3 py-2 rounded-lg text-xs font-bold tracking-wider transition-colors duration-150 whitespace-nowrap ${
+                  activeTab === tab.id
+                    ? 'bg-[#10b981] text-white'
+                    : 'text-[#6b7280] hover:text-white hover:bg-[#2d3148]'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    /* ─── TabRouter ─────────────────────────────────────────── */
+    function TabRouter({ activeTab, allEntries, onSave }) {
+      const currentDate = todayISO();
+      const currentYM   = currentDate.slice(0, 7);
+      const todayEntry  = allEntries.find(e => e.date === currentDate) || makeEmptyEntry(currentDate);
+      const monthEntries = getMonthEntries(allEntries, currentYM);
+      const weekEntries  = getWeekEntries(allEntries);
+
+      switch (activeTab) {
+        case 'today':
+          return <TodayTab entry={todayEntry} onSave={onSave} />;
+        case 'week':
+          return <WeekTab entries={weekEntries} />;
+        case 'month':
+          return <MonthTab entries={monthEntries} currentYM={currentYM} />;
+        case 'beta':
+          return <BetaUsersTab allEntries={allEntries} />;
+        case 'community':
+          return <CommunityTab entries={allEntries} />;
+        case 'export':
+          return <ExportTab allEntries={allEntries} />;
+        default:
+          return null;
+      }
+    }
+
+    /* ─── Header ─────────────────────────────────────────────── */
+    function Header({ monthTotal, monthEntries }) {
+      const pct = Math.min(100, Math.max(0, (monthTotal / MONTHLY_TARGET) * 100));
+      return (
+        <header className="bg-[#1a1d2e] border-b border-[#2d3148] px-4 py-3">
+          <div className="max-w-3xl mx-auto flex items-center justify-between">
+            <div>
+              <h1 className="text-base font-bold tracking-tight">Sin Miedo Capital</h1>
+              <p className="text-[#6b7280] text-xs">P/L Dashboard · {todayISO()}</p>
+            </div>
+            <div className="text-right">
+              <p
+                className="text-sm font-bold"
+                style={{ color: plColor(monthTotal) }}
+              >
+                {formatCurrency(monthTotal)}
+              </p>
+              <p className="text-[#6b7280] text-xs">{pct.toFixed(0)}% of $50k goal</p>
+            </div>
+          </div>
+        </header>
+      );
+    }
+
+    /* ─── App ────────────────────────────────────────────────── */
+    function App() {
+      const [activeTab,  setActiveTab]  = React.useState('today');
+      const [allEntries, setAllEntries] = React.useState(() => loadEntries());
+
+      React.useEffect(() => {
+        saveEntries(allEntries);
+      }, [allEntries]);
+
+      function handleSave(entry) {
+        setAllEntries(prev => upsertEntry(prev, entry));
+      }
+
+      const currentYM    = todayISO().slice(0, 7);
+      const monthEntries = getMonthEntries(allEntries, currentYM);
+      const monthTotal   = monthlyTotal(monthEntries);
+
+      return (
+        <div className="min-h-screen bg-[#0f1117] text-white">
+          <Header monthTotal={monthTotal} monthEntries={monthEntries} />
+          <main className="px-4 py-5 max-w-3xl mx-auto">
+            <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
+            <TabRouter
+              activeTab={activeTab}
+              allEntries={allEntries}
+              onSave={handleSave}
+            />
+          </main>
+        </div>
+      );
+    }
+
+    /* ─── Mount ──────────────────────────────────────────────── */
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
