@@ -158,17 +158,21 @@ htfBull = htfClose > htfEmaVal
 htfBear = htfClose < htfEmaVal
 
 [c1Close, c1Ema] = request.security(corrPair1, htfTf,
-     [close, ta.ema(close, corrEmaLen)], lookahead=barmerge.lookahead_off)
+     [close, ta.ema(close, corrEmaLen)], lookahead=barmerge.lookahead_off,
+     ignore_invalid_symbol=true)
 [c2Close, c2Ema] = request.security(corrPair2, htfTf,
-     [close, ta.ema(close, corrEmaLen)], lookahead=barmerge.lookahead_off)
+     [close, ta.ema(close, corrEmaLen)], lookahead=barmerge.lookahead_off,
+     ignore_invalid_symbol=true)
 [c3Close, c3Ema] = request.security(corrPair3, htfTf,
-     [close, ta.ema(close, corrEmaLen)], lookahead=barmerge.lookahead_off)
+     [close, ta.ema(close, corrEmaLen)], lookahead=barmerge.lookahead_off,
+     ignore_invalid_symbol=true)
 [c4Close, c4Ema] = request.security(corrPair4, htfTf,
-     [close, ta.ema(close, corrEmaLen)], lookahead=barmerge.lookahead_off)
-c1Bull = c1Close > c1Ema
-c2Bull = c2Close > c2Ema
-c3Bull = c3Close > c3Ema
-c4Bull = c4Close > c4Ema
+     [close, ta.ema(close, corrEmaLen)], lookahead=barmerge.lookahead_off,
+     ignore_invalid_symbol=true)
+c1Bull = not na(c1Close) and c1Close > c1Ema
+c2Bull = not na(c2Close) and c2Close > c2Ema
+c3Bull = not na(c3Close) and c3Close > c3Ema
+c4Bull = not na(c4Close) and c4Close > c4Ema
 
 emaFastVal = ta.ema(close, ema3Fast)
 emaMidVal  = ta.ema(close, ema3Mid)
@@ -892,8 +896,10 @@ if slBreach and not na(slTrack)
 var line[] psychLines = array.new<line>(0)
 
 if showPsych and barstate.islast
-    for i = 0 to array.size(psychLines) - 1
-        line.delete(array.get(psychLines, i))
+    _sz = array.size(psychLines)
+    if _sz > 0
+        for i = 0 to _sz - 1
+            line.delete(array.get(psychLines, i))
     array.clear(psychLines)
     baseLevel = math.round(close / psychInc) * psychInc
     for i = -psychLevels to psychLevels
@@ -910,8 +916,10 @@ if showPsych and barstate.islast
 var box[] vrvpBoxes = array.new<box>(0)
 
 if showVrvp and barstate.islast
-    for i = 0 to array.size(vrvpBoxes) - 1
-        box.delete(array.get(vrvpBoxes, i))
+    _sz = array.size(vrvpBoxes)
+    if _sz > 0
+        for i = 0 to _sz - 1
+            box.delete(array.get(vrvpBoxes, i))
     array.clear(vrvpBoxes)
 
     actualBars = math.min(vrvpBars, bar_index)
@@ -966,19 +974,26 @@ if showCorr and barstate.islast
          bgcolor=color.new(#1a1a2e, 20), text_halign=text.align_center)
     table.merge_cells(corrTable, 0, 0, 1, 0)
 
+    c1Valid = not na(c1Close)
+    c2Valid = not na(c2Close)
+    c3Valid = not na(c3Close)
+    c4Valid = not na(c4Close)
+
     for r = 0 to 3
         pName   = r == 0 ? corrPair1 : r == 1 ? corrPair2 : r == 2 ? corrPair3 : corrPair4
         isCBull = r == 0 ? c1Bull : r == 1 ? c2Bull : r == 2 ? c3Bull : c4Bull
+        isValid = r == 0 ? c1Valid : r == 1 ? c2Valid : r == 2 ? c3Valid : c4Valid
         rowBg   = r % 2 == 0 ? color.new(#0d0d0d, 60) : color.new(#111122, 55)
-        biasT   = isCBull ? "BULL ▲" : "BEAR ▼"
-        biasC   = isCBull ? colBull   : colBear
+        biasT   = isValid ? (isCBull ? "BULL ▲" : "BEAR ▼") : "N/A"
+        biasC   = isValid ? (isCBull ? colBull : colBear) : color.new(color.white, 60)
         table.cell(corrTable, 0, r + 1, pName,
              text_color=color.new(color.white, 35), text_size=size.small, bgcolor=rowBg)
         table.cell(corrTable, 1, r + 1, biasT,
              text_color=biasC, text_size=size.small, bgcolor=rowBg)
 
+    validCnt = (c1Valid ? 1 : 0) + (c2Valid ? 1 : 0) + (c3Valid ? 1 : 0) + (c4Valid ? 1 : 0)
     bullCnt  = (c1Bull ? 1 : 0) + (c2Bull ? 1 : 0) + (c3Bull ? 1 : 0) + (c4Bull ? 1 : 0)
-    bearCnt  = 4 - bullCnt
+    bearCnt  = validCnt - bullCnt
     alignTxt = str.tostring(bullCnt) + "▲ / " + str.tostring(bearCnt) + "▼"
     alignCol = bullCnt >= 3 ? colBull : bearCnt >= 3 ? colBear : color.new(#ffd700, 0)
     alignBg  = bullCnt >= 3 ? color.new(colBull, 82) : bearCnt >= 3 ? color.new(colBear, 82) : color.new(#3a3000, 40)
