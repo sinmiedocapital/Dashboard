@@ -339,10 +339,10 @@ if not na(pivLow)
     swingLow    := pivLow
     swingLowBar := bar_index[structLen]
 
-bosBull   = not na(swingHigh) and close > swingHigh and mktStr == "bullish"
-chochBull = not na(swingHigh) and close > swingHigh and (mktStr == "bearish" or mktStr == "neutral")
-bosBear   = not na(swingLow)  and close < swingLow  and mktStr == "bearish"
-chochBear = not na(swingLow)  and close < swingLow  and (mktStr == "bullish" or mktStr == "neutral")
+bosBull   = not na(swingHigh) and close > swingHigh and close[1] <= swingHigh and mktStr == "bullish"
+chochBull = not na(swingHigh) and close > swingHigh and close[1] <= swingHigh and (mktStr == "bearish" or mktStr == "neutral")
+bosBear   = not na(swingLow)  and close < swingLow  and close[1] >= swingLow  and mktStr == "bearish"
+chochBear = not na(swingLow)  and close < swingLow  and close[1] >= swingLow  and (mktStr == "bullish" or mktStr == "neutral")
 
 snapSwingHigh    = swingHigh
 snapSwingHighBar = swingHighBar
@@ -662,7 +662,7 @@ sellRaw = inBearZone and htfBear and mktStr == "bearish" and
 var int lastSig = -999
 validBuy  = buyRaw  and (bar_index - lastSig > cooldown)
 validSell = sellRaw and (bar_index - lastSig > cooldown)
-if validBuy or validSell
+if (validBuy or validSell) and barstate.isconfirmed
     lastSig := bar_index
 
 // ── TP1 Tracking ─────────────────────────────────────────────────────────────
@@ -845,7 +845,7 @@ if showLevels
 
 // ── Signal Labels ─────────────────────────────────────────────────────────────
 var label[] sigLbls = array.new<label>(0)
-maxSigLbls = 20
+maxSigLbls = 8
 
 if showAlerts
     if validBuy and not na(bullSlFinal)
