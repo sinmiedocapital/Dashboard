@@ -140,10 +140,6 @@ colEntry      = color.new(color.white, 30)
 colSL         = color.new(#ff3b5c, 15)
 colTP1        = color.new(#00c076, 40)
 colTP2        = color.new(#00c076, 10)
-colSessAsia   = color.new(#6c5ce7, 94)
-colSessLondon = color.new(#fdcb6e, 94)
-colSessNyOpen = color.new(#00c076, 91)
-colSessNyCls  = color.new(#ff3b5c, 94)
 colNews       = color.new(#ffd700, 92)
 colEmaFast    = #f9ca24
 colEmaMid     = #6c5ce7
@@ -199,37 +195,112 @@ inNews3      = not na(time(timeframe.period, newsWin3, "America/New_York"))
 inNewsWindow = inNews1 or inNews2 or inNews3
 newsOk       = blockNews ? not inNewsWindow : true
 
-// ── Background Highlights ────────────────────────────────────────────────────
-bgcolor(showAsia   and inSessAsia   ? colSessAsia   : na, title="Asia Session")
-bgcolor(showLondon and inSessLondon ? colSessLondon : na, title="London Session")
-bgcolor(showNyOpen and inSessNyPwr  ? colSessNyOpen : na, title="NY Power Hour")
-bgcolor(showNyCls  and inSessNyCls  ? colSessNyCls  : na, title="NY Close")
-bgcolor(showNewsWin and inNewsWindow ? colNews       : na, title="News Window")
+// ── News Window Highlight ────────────────────────────────────────────────────
+bgcolor(showNewsWin and inNewsWindow ? colNews : na, title="News Window")
 
-// ── Session Labels ───────────────────────────────────────────────────────────
-var label[] sessLbls = array.new<label>(0)
-maxSessLbls = 6
+// ── Session Boxes (bounded H-L rectangles, not full-height fills) ─────────────
+var box[] asiaBoxes   = array.new<box>(0)
+var box[] londonBoxes = array.new<box>(0)
+var box[] nyOpenBoxes = array.new<box>(0)
+var box[] nyClsBoxes  = array.new<box>(0)
+maxSessBxs = 4
 
-if showAsia and not inSessAsia[1] and inSessAsia
-    array.push(sessLbls, label.new(bar_index, high, "Asia Open",
-         style=label.style_label_down, color=color.new(#6c5ce7, 50),
-         textcolor=color.white, size=size.tiny))
-    if array.size(sessLbls) > maxSessLbls
-        label.delete(array.shift(sessLbls))
+var int   _asiaL  = na
+var float _asiaH  = na
+var float _asiaLo = na
+var int   _lonL   = na
+var float _lonH   = na
+var float _lonLo  = na
+var int   _nyoL   = na
+var float _nyoH   = na
+var float _nyoLo  = na
+var int   _nycL   = na
+var float _nycH   = na
+var float _nycLo  = na
 
-if showLondon and not inSessLondon[1] and inSessLondon
-    array.push(sessLbls, label.new(bar_index, high, "London Open",
-         style=label.style_label_down, color=color.new(#fdcb6e, 50),
-         textcolor=color.black, size=size.tiny))
-    if array.size(sessLbls) > maxSessLbls
-        label.delete(array.shift(sessLbls))
+if showAsia
+    if inSessAsia and not inSessAsia[1]
+        _asiaL  := bar_index
+        _asiaH  := high
+        _asiaLo := low
+        array.push(asiaBoxes, box.new(_asiaL, _asiaH, bar_index + 1, _asiaLo,
+             bgcolor=color.new(#6c5ce7, 91), border_color=color.new(#6c5ce7, 42),
+             border_width=1, text="Asia", text_size=size.tiny,
+             text_color=color.new(#6c5ce7, 10),
+             text_halign=text.align_left, text_valign=text.align_top))
+        if array.size(asiaBoxes) > maxSessBxs
+            box.delete(array.shift(asiaBoxes))
+    else if inSessAsia and not na(_asiaL)
+        _asiaH  := math.max(_asiaH, high)
+        _asiaLo := math.min(_asiaLo, low)
+        b = array.get(asiaBoxes, array.size(asiaBoxes) - 1)
+        if not na(b)
+            box.set_top(b,    _asiaH)
+            box.set_bottom(b, _asiaLo)
+            box.set_right(b,  bar_index + 1)
 
-if showNyOpen and not inSessNyPwr[1] and inSessNyPwr
-    array.push(sessLbls, label.new(bar_index, high, "NY Open",
-         style=label.style_label_down, color=color.new(#00c076, 40),
-         textcolor=color.white, size=size.tiny))
-    if array.size(sessLbls) > maxSessLbls
-        label.delete(array.shift(sessLbls))
+if showLondon
+    if inSessLondon and not inSessLondon[1]
+        _lonL  := bar_index
+        _lonH  := high
+        _lonLo := low
+        array.push(londonBoxes, box.new(_lonL, _lonH, bar_index + 1, _lonLo,
+             bgcolor=color.new(#fdcb6e, 91), border_color=color.new(#fdcb6e, 42),
+             border_width=1, text="London", text_size=size.tiny,
+             text_color=color.new(#fdcb6e, 10),
+             text_halign=text.align_left, text_valign=text.align_top))
+        if array.size(londonBoxes) > maxSessBxs
+            box.delete(array.shift(londonBoxes))
+    else if inSessLondon and not na(_lonL)
+        _lonH  := math.max(_lonH, high)
+        _lonLo := math.min(_lonLo, low)
+        b = array.get(londonBoxes, array.size(londonBoxes) - 1)
+        if not na(b)
+            box.set_top(b,    _lonH)
+            box.set_bottom(b, _lonLo)
+            box.set_right(b,  bar_index + 1)
+
+if showNyOpen
+    if inSessNyPwr and not inSessNyPwr[1]
+        _nyoL  := bar_index
+        _nyoH  := high
+        _nyoLo := low
+        array.push(nyOpenBoxes, box.new(_nyoL, _nyoH, bar_index + 1, _nyoLo,
+             bgcolor=color.new(#00c076, 91), border_color=color.new(#00c076, 42),
+             border_width=1, text="NY Open", text_size=size.tiny,
+             text_color=color.new(#00c076, 10),
+             text_halign=text.align_left, text_valign=text.align_top))
+        if array.size(nyOpenBoxes) > maxSessBxs
+            box.delete(array.shift(nyOpenBoxes))
+    else if inSessNyPwr and not na(_nyoL)
+        _nyoH  := math.max(_nyoH, high)
+        _nyoLo := math.min(_nyoLo, low)
+        b = array.get(nyOpenBoxes, array.size(nyOpenBoxes) - 1)
+        if not na(b)
+            box.set_top(b,    _nyoH)
+            box.set_bottom(b, _nyoLo)
+            box.set_right(b,  bar_index + 1)
+
+if showNyCls
+    if inSessNyCls and not inSessNyCls[1]
+        _nycL  := bar_index
+        _nycH  := high
+        _nycLo := low
+        array.push(nyClsBoxes, box.new(_nycL, _nycH, bar_index + 1, _nycLo,
+             bgcolor=color.new(#ff3b5c, 91), border_color=color.new(#ff3b5c, 42),
+             border_width=1, text="NY Close", text_size=size.tiny,
+             text_color=color.new(#ff3b5c, 10),
+             text_halign=text.align_left, text_valign=text.align_top))
+        if array.size(nyClsBoxes) > maxSessBxs
+            box.delete(array.shift(nyClsBoxes))
+    else if inSessNyCls and not na(_nycL)
+        _nycH  := math.max(_nycH, high)
+        _nycLo := math.min(_nycLo, low)
+        b = array.get(nyClsBoxes, array.size(nyClsBoxes) - 1)
+        if not na(b)
+            box.set_top(b,    _nycH)
+            box.set_bottom(b, _nycLo)
+            box.set_right(b,  bar_index + 1)
 
 // ── 3 EMA Plots ──────────────────────────────────────────────────────────────
 plot(show3Ema ? emaFastVal : na, "EMA Fast", color=colEmaFast, linewidth=1)
