@@ -1163,13 +1163,17 @@ if barstate.islast
     // ── Win rate row (merged, row 4) ──
     totalClosed = totalWins + totalLosses
     winRate     = totalClosed > 0 ? (float(totalWins) / float(totalClosed)) * 100.0 : 0.0
-    wrTxt = totalClosed > 0 ?
+    wrTxt = (totalClosed > 0 ?
          str.tostring(winRate, "#.0") + "%  " + str.tostring(totalWins) + "W / " + str.tostring(totalLosses) + "L  (" + str.tostring(totalClosed) + ")" :
-         "—  No Closed Trades"
-    wrCol = winRate >= 60 ? color.new(colBull, 0) : winRate >= 40 ? color.new(#ffd700, 0) :
-            totalClosed == 0 ? color.new(color.white, 50) : color.new(colBear, 0)
-    wrBg  = winRate >= 60 ? color.new(colBull, 85) : winRate >= 40 ? color.new(#ffd700, 88) :
-            totalClosed == 0 ? color.new(#0d0d0d, 60) : color.new(colBear, 85)
+         "—  No Closed Trades")
+    wrCol = (winRate >= 60   ? color.new(colBull, 0) :
+             winRate >= 40   ? color.new(#ffd700, 0) :
+             totalClosed > 0 ? color.new(colBear, 0) :
+                               color.new(color.white, 50))
+    wrBg  = (winRate >= 60   ? color.new(colBull, 85) :
+             winRate >= 40   ? color.new(#ffd700, 88) :
+             totalClosed > 0 ? color.new(colBear, 85) :
+                               color.new(#0d0d0d, 60))
     table.cell(logTable, 0, 4, wrTxt,
          text_color=wrCol, text_size=size.tiny, bgcolor=wrBg,
          text_halign=text.align_center)
