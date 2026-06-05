@@ -26,6 +26,16 @@ create table signals (
 );
 ```
 
+Also run this to create the waitlist table:
+
+```sql
+create table waitlist (
+  id         uuid primary key default gen_random_uuid(),
+  created_at timestamptz default now(),
+  email      text unique not null
+);
+```
+
 3. Go to Project Settings → API → copy your **Project URL**, **anon key**, and **service_role key**
 
 ### 2. Environment Variables

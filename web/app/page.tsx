@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import WaitlistForm from '@/components/WaitlistForm'
 
 const tables = [
   {
@@ -95,6 +96,20 @@ export default function HomePage() {
         >
           Access Signal Dashboard
         </Link>
+      </section>
+
+      {/* Waitlist */}
+      <section className="max-w-3xl mx-auto px-6 pb-16">
+        <div className="rounded-xl p-8 text-center" style={{ backgroundColor: '#1a1a2e', border: '1px solid #2a2a3e' }}>
+          <div className="inline-block text-xs font-semibold px-3 py-1 rounded-full mb-4" style={{ backgroundColor: '#ff3b5c22', color: '#ff3b5c' }}>
+            Founding Spots Full
+          </div>
+          <h2 className="text-xl font-bold text-white mb-2">Join the Waitlist</h2>
+          <p className="text-slate-400 text-sm mb-6 max-w-sm mx-auto">
+            Paid access opens once our founding members document 90 days of live results. Be first in line.
+          </p>
+          <WaitlistForm />
+        </div>
       </section>
 
       {/* Tables guide */}
