@@ -2,6 +2,7 @@ import { cookies } from 'next/headers'
 import { supabase } from '@/lib/supabase'
 import SignalCard from '@/components/SignalCard'
 import WinRateBar from '@/components/WinRateBar'
+import StatusBar from '@/components/StatusBar'
 import LoginForm from '@/components/LoginForm'
 import type { Signal } from '@/lib/types'
 
@@ -38,6 +39,9 @@ export default async function SignalsPage() {
             ← Back to home
           </a>
         </div>
+
+        {/* Traffic light */}
+        <StatusBar signals={list} />
 
         {/* Win rate */}
         <WinRateBar signals={list} />

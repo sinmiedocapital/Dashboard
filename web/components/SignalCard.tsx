@@ -1,5 +1,28 @@
 'use client'
 import type { Signal } from '@/lib/types'
+import Tooltip from './Tooltip'
+
+const zoneGlossary: Record<string, string> = {
+  'OB':         'Order Block — a price area where a large institution placed a big buy or sell order. Price often returns to these zones.',
+  'FVG':        'Fair Value Gap — a price gap (imbalance) left behind by fast moves. Price tends to come back to "fill" these gaps.',
+  'OB+FVG':     'Order Block + Fair Value Gap — double confirmation. Both signals overlap in the same zone. This is the strongest setup.',
+  'Demand':     'Demand Zone — an area where buyers stepped in strongly before. Price bounced up from here. Good for long entries.',
+  'Supply':     'Supply Zone — an area where sellers stepped in strongly before. Price dropped from here. Good for short entries.',
+  'OB+Demand':  'Order Block inside a Demand Zone — institutional buying area confirmed by a demand zone. Strong long setup.',
+  'OB+Supply':  'Order Block inside a Supply Zone — institutional selling area confirmed by a supply zone. Strong short setup.',
+  'Breaker':    'Breaker Block — a failed Order Block that flipped. Was support, now resistance (or vice versa).',
+  'Mitigation': 'Mitigation Block — an area where a previous order was partially filled. Price often returns to finish the job.',
+}
+
+const candleGlossary: Record<string, string> = {
+  'Hammer':     'A candle with a long lower wick and small body. Shows buyers rejected lower prices — bullish signal.',
+  'Pin Bar':    'A candle with a long wick in one direction. The tail shows a strong rejection of that price level.',
+  'Engulfing':  'A large candle that completely covers the previous candle. Shows a strong reversal in momentum.',
+  'Doji':       'A candle where open and close are nearly the same. Shows indecision — wait for the next candle to confirm.',
+  'MSS':        'Market Structure Shift — price broke a key level, signaling that the trend may be changing direction.',
+  'BOS':        'Break of Structure — price pushed through a recent high or low, confirming the current trend is continuing.',
+  'Inside Bar': 'A candle contained entirely within the previous candle. Shows consolidation before a potential breakout.',
+}
 
 function fmt(n: number) {
   return n?.toFixed(2) ?? '—'
@@ -24,6 +47,9 @@ export default function SignalCard({ signal }: { signal: Signal }) {
     '#94a3b8'
   const resultLabel = signal.result ?? 'Open'
 
+  const zoneTooltip = signal.zone ? zoneGlossary[signal.zone] : null
+  const candleTooltip = signal.candle ? candleGlossary[signal.candle] : null
+
   return (
     <div
       className="rounded-lg p-4 mb-3 border-l-4"
@@ -35,8 +61,8 @@ export default function SignalCard({ signal }: { signal: Signal }) {
         borderBottom: '1px solid #2a2a3e',
       }}
     >
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span
             className="text-sm font-bold px-2 py-0.5 rounded"
             style={{ backgroundColor: accent + '22', color: accent }}
@@ -46,14 +72,14 @@ export default function SignalCard({ signal }: { signal: Signal }) {
           <span className="text-white font-semibold">{signal.symbol}</span>
           <span className="text-xs text-slate-400">{signal.tf}m</span>
           {signal.zone && (
-            <span className="text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: '#0d1117', color: '#94a3b8' }}>
-              {signal.zone}
-            </span>
+            zoneTooltip
+              ? <Tooltip label={signal.zone} text={zoneTooltip} />
+              : <span className="text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: '#0d1117', color: '#94a3b8' }}>{signal.zone}</span>
           )}
           {signal.candle && (
-            <span className="text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: '#0d1117', color: '#94a3b8' }}>
-              {signal.candle}
-            </span>
+            candleTooltip
+              ? <Tooltip label={signal.candle} text={candleTooltip} />
+              : <span className="text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: '#0d1117', color: '#94a3b8' }}>{signal.candle}</span>
           )}
         </div>
         <div className="flex items-center gap-3">
