@@ -224,7 +224,7 @@ if showAsia
         _asiaH  := high
         _asiaLo := low
         array.push(asiaBoxes, box.new(_asiaL, _asiaH, bar_index + 1, _asiaLo,
-             bgcolor=color.new(#6c5ce7, 91), border_color=color.new(#6c5ce7, 42),
+             bgcolor=color.new(#6c5ce7, 94), border_color=color.new(#6c5ce7, 55),
              border_width=1, text="Asia", text_size=size.tiny,
              text_color=color.new(#6c5ce7, 10),
              text_halign=text.align_left, text_valign=text.align_top))
@@ -245,7 +245,7 @@ if showLondon
         _lonH  := high
         _lonLo := low
         array.push(londonBoxes, box.new(_lonL, _lonH, bar_index + 1, _lonLo,
-             bgcolor=color.new(#fdcb6e, 91), border_color=color.new(#fdcb6e, 42),
+             bgcolor=color.new(#fdcb6e, 94), border_color=color.new(#fdcb6e, 55),
              border_width=1, text="London", text_size=size.tiny,
              text_color=color.new(#fdcb6e, 10),
              text_halign=text.align_left, text_valign=text.align_top))
@@ -266,7 +266,7 @@ if showNyOpen
         _nyoH  := high
         _nyoLo := low
         array.push(nyOpenBoxes, box.new(_nyoL, _nyoH, bar_index + 1, _nyoLo,
-             bgcolor=color.new(#00c076, 91), border_color=color.new(#00c076, 42),
+             bgcolor=color.new(#00c076, 94), border_color=color.new(#00c076, 55),
              border_width=1, text="NY Open", text_size=size.tiny,
              text_color=color.new(#00c076, 10),
              text_halign=text.align_left, text_valign=text.align_top))
@@ -287,7 +287,7 @@ if showNyCls
         _nycH  := high
         _nycLo := low
         array.push(nyClsBoxes, box.new(_nycL, _nycH, bar_index + 1, _nycLo,
-             bgcolor=color.new(#ff3b5c, 91), border_color=color.new(#ff3b5c, 42),
+             bgcolor=color.new(#ff3b5c, 94), border_color=color.new(#ff3b5c, 55),
              border_width=1, text="NY Close", text_size=size.tiny,
              text_color=color.new(#ff3b5c, 10),
              text_halign=text.align_left, text_valign=text.align_top))
@@ -856,13 +856,9 @@ if showAlerts
         tp2Px    = entryPx + risk * tpRatio
         zoneType = (inBullOB and inBullFvg) ? "OB + FVG" : inBullOB ? "OB" : "FVG"
         candleTxt = hammer ? "Hammer" : "Engulf"
-        txt = "▲  LONG  [" + candleTxt + "]\n" +
-              "Entry   " + str.tostring(entryPx, "#.##") + "\n" +
-              "SL      " + str.tostring(slPx,    "#.##") + "  (-" + str.tostring(risk,    "#.##") + ")\n" +
-              "TP1     " + str.tostring(tp1Px,   "#.##") + "  (" + str.tostring(tp1Ratio, "#.#") + "R)\n" +
-              "TP2     " + str.tostring(tp2Px,   "#.##") + "  (" + str.tostring(tpRatio,  "#.#") + "R)\n" +
-              "Zone    " + zoneType + "\n" +
-              "ATR buf " + str.tostring(atrVal * atrMult, "#.###")
+        txt = "▲ LONG  [" + candleTxt + " · " + zoneType + "]\n" +
+              str.tostring(entryPx, "#.##") + "  SL " + str.tostring(slPx, "#.##") + "  (-" + str.tostring(risk, "#.##") + ")\n" +
+              "TP1 " + str.tostring(tp1Px, "#.##") + "  TP2 " + str.tostring(tp2Px, "#.##")
         array.push(sigLbls, label.new(bar_index, low - (high - low) * 0.5, txt,
              style=label.style_label_up, color=color.new(colBull, 10),
              textcolor=color.white, size=size.small))
@@ -876,13 +872,9 @@ if showAlerts
         tp2Px    = entryPx - risk * tpRatio
         zoneType = (inBearOB and inBearFvg) ? "OB + FVG" : inBearOB ? "OB" : "FVG"
         candleTxt = shootStar ? "ShootStar" : "Engulf"
-        txt = "▼  SHORT  [" + candleTxt + "]\n" +
-              "Entry   " + str.tostring(entryPx, "#.##") + "\n" +
-              "SL      " + str.tostring(slPx,    "#.##") + "  (+" + str.tostring(risk,    "#.##") + ")\n" +
-              "TP1     " + str.tostring(tp1Px,   "#.##") + "  (" + str.tostring(tp1Ratio, "#.#") + "R)\n" +
-              "TP2     " + str.tostring(tp2Px,   "#.##") + "  (" + str.tostring(tpRatio,  "#.#") + "R)\n" +
-              "Zone    " + zoneType + "\n" +
-              "ATR buf " + str.tostring(atrVal * atrMult, "#.###")
+        txt = "▼ SHORT  [" + candleTxt + " · " + zoneType + "]\n" +
+              str.tostring(entryPx, "#.##") + "  SL " + str.tostring(slPx, "#.##") + "  (+" + str.tostring(risk, "#.##") + ")\n" +
+              "TP1 " + str.tostring(tp1Px, "#.##") + "  TP2 " + str.tostring(tp2Px, "#.##")
         array.push(sigLbls, label.new(bar_index, high + (high - low) * 0.5, txt,
              style=label.style_label_down, color=color.new(colBear, 10),
              textcolor=color.white, size=size.small))
@@ -978,7 +970,7 @@ if showPsych and barstate.islast
         isMajor = math.abs(i) % psychMajorAt == 0
         lWidth  = isMajor ? 2 : 1
         lStyle  = isMajor ? line.style_solid  : line.style_dotted
-        lColor  = isMajor ? color.new(color.white, 48) : color.new(color.white, 75)
+        lColor  = isMajor ? color.new(color.white, 55) : color.new(color.white, 82)
         newLine = line.new(bar_index - 50, lvl, bar_index + 50, lvl,
              color=lColor, width=lWidth, style=lStyle, extend=extend.right)
         array.push(psychLines, newLine)
@@ -1032,7 +1024,7 @@ if showVrvp and barstate.islast
                  bgcolor=bColor, border_color=color.new(color.gray, 88), border_width=0))
 
 // ── Correlation Panel (top-left) ──────────────────────────────────────────────
-var table corrTable = table.new(position.top_left, 2, 6,
+var table corrTable = table.new(position.top_left, 2, 5,
      bgcolor      = color.new(#0d0d0d, 55),
      border_color = color.new(color.gray, 60),
      border_width = 1,
@@ -1040,15 +1032,21 @@ var table corrTable = table.new(position.top_left, 2, 6,
      frame_width  = 1)
 
 if showCorr and barstate.islast
-    table.cell(corrTable, 0, 0, "Market Correlations",
-         text_color=color.new(color.white, 10), text_size=size.normal,
-         bgcolor=color.new(#1a1a2e, 20), text_halign=text.align_center)
-    table.merge_cells(corrTable, 0, 0, 1, 0)
-
     c1Valid = not na(c1Close)
     c2Valid = not na(c2Close)
     c3Valid = not na(c3Close)
     c4Valid = not na(c4Close)
+
+    validCnt = (c1Valid ? 1 : 0) + (c2Valid ? 1 : 0) + (c3Valid ? 1 : 0) + (c4Valid ? 1 : 0)
+    bullCnt  = (c1Bull ? 1 : 0) + (c2Bull ? 1 : 0) + (c3Bull ? 1 : 0) + (c4Bull ? 1 : 0)
+    bearCnt  = validCnt - bullCnt
+
+    corrHdrTxt = "Corr  " + str.tostring(bullCnt) + "▲/" + str.tostring(bearCnt) + "▼"
+    corrHdrCol = bullCnt > bearCnt ? colBull : bearCnt > bullCnt ? colBear : color.new(#ffd700, 0)
+    table.cell(corrTable, 0, 0, corrHdrTxt,
+         text_color=corrHdrCol, text_size=size.tiny,
+         bgcolor=color.new(#1a1a2e, 20), text_halign=text.align_center)
+    table.merge_cells(corrTable, 0, 0, 1, 0)
 
     for r = 0 to 3
         pName   = r == 0 ? corrPair1 : r == 1 ? corrPair2 : r == 2 ? corrPair3 : corrPair4
@@ -1058,23 +1056,12 @@ if showCorr and barstate.islast
         biasT   = isValid ? (isCBull ? "BULL ▲" : "BEAR ▼") : "N/A"
         biasC   = isValid ? (isCBull ? colBull : colBear) : color.new(color.white, 60)
         table.cell(corrTable, 0, r + 1, pName,
-             text_color=color.new(color.white, 35), text_size=size.small, bgcolor=rowBg)
+             text_color=color.new(color.white, 35), text_size=size.tiny, bgcolor=rowBg)
         table.cell(corrTable, 1, r + 1, biasT,
-             text_color=biasC, text_size=size.small, bgcolor=rowBg)
+             text_color=biasC, text_size=size.tiny, bgcolor=rowBg)
 
-    validCnt = (c1Valid ? 1 : 0) + (c2Valid ? 1 : 0) + (c3Valid ? 1 : 0) + (c4Valid ? 1 : 0)
-    bullCnt  = (c1Bull ? 1 : 0) + (c2Bull ? 1 : 0) + (c3Bull ? 1 : 0) + (c4Bull ? 1 : 0)
-    bearCnt  = validCnt - bullCnt
-    alignTxt = str.tostring(bullCnt) + "▲ / " + str.tostring(bearCnt) + "▼"
-    alignCol = bullCnt >= 3 ? colBull : bearCnt >= 3 ? colBear : color.new(#ffd700, 0)
-    alignBg  = bullCnt >= 3 ? color.new(colBull, 82) : bearCnt >= 3 ? color.new(colBear, 82) : color.new(#3a3000, 40)
-    table.cell(corrTable, 0, 5, alignTxt,
-         text_color=alignCol, text_size=size.small, bgcolor=alignBg,
-         text_halign=text.align_center)
-    table.merge_cells(corrTable, 0, 5, 1, 5)
-
-// ── Info Panel (top-right) ────────────────────────────────────────────────────
-var table panel = table.new(position.top_right, 2, 12,
+// ── Info Panel (middle-right) ────────────────────────────────────────────────
+var table panel = table.new(position.middle_right, 2, 8,
      bgcolor      = color.new(#0d0d0d, 55),
      border_color = color.new(color.gray, 60),
      border_width = 1,
@@ -1085,71 +1072,59 @@ colRowA = color.new(#0d0d0d, 60)
 colRowB = color.new(#111122, 55)
 
 if showBias and barstate.islast
+    // Row 0: Header
     table.cell(panel, 0, 0, "SMC Venice v9",
-         text_color=color.new(color.white, 10), text_size=size.normal,
+         text_color=color.new(color.white, 10), text_size=size.small,
          bgcolor=color.new(#1a1a2e, 20), text_halign=text.align_center)
     table.merge_cells(panel, 0, 0, 1, 0)
 
+    // Row 1: HTF Bias
     htfTxt = htfBull ? "BULL ▲" : htfBear ? "BEAR ▼" : "NEUTRAL"
     htfCol = htfBull ? colBull  : htfBear ? colBear  : color.gray
     table.cell(panel, 0, 1, "HTF Bias",
-         text_color=color.new(color.white, 35), text_size=size.small, bgcolor=colRowA)
+         text_color=color.new(color.white, 35), text_size=size.tiny, bgcolor=colRowA)
     table.cell(panel, 1, 1, htfTxt,
-         text_color=htfCol, text_size=size.small, bgcolor=colRowA)
+         text_color=htfCol, text_size=size.tiny, bgcolor=colRowA)
 
-    vwapTxt = aboveVwap ? "Above ▲" : "Below ▼"
-    vwapCol = aboveVwap ? colBull : colBear
-    table.cell(panel, 0, 2, "VWAP",
-         text_color=color.new(color.white, 35), text_size=size.small, bgcolor=colRowB)
-    table.cell(panel, 1, 2, vwapTxt,
-         text_color=vwapCol, text_size=size.small, bgcolor=colRowB)
+    // Row 2: Filters — VWAP / Session / RSI / Vol condensed into one merged row
+    vwapMk  = aboveVwap ? "VWAP✓" : "VWAP✗"
+    sessMk  = inSession ? "Sess✓" : "Sess✗"
+    rsiMk   = (htfBull and rsiLongOk) or (htfBear and rsiShortOk) ? "RSI✓" : "RSI✗"
+    volMk   = volOk ? "Vol✓" : "Vol✗"
+    filtrTxt = vwapMk + "  " + sessMk + "  " + rsiMk + "  " + volMk
+    table.cell(panel, 0, 2, filtrTxt,
+         text_color=color.new(color.white, 42), text_size=size.tiny, bgcolor=colRowB,
+         text_halign=text.align_center)
+    table.merge_cells(panel, 0, 2, 1, 2)
 
+    // Row 3: Structure
     strTxt = mktStr == "bullish" ? "Bullish ▲" : mktStr == "bearish" ? "Bearish ▼" : "Neutral"
     strCol = mktStr == "bullish" ? colBull : mktStr == "bearish" ? colBear : color.gray
     table.cell(panel, 0, 3, "Structure",
-         text_color=color.new(color.white, 35), text_size=size.small, bgcolor=colRowA)
+         text_color=color.new(color.white, 35), text_size=size.tiny, bgcolor=colRowA)
     table.cell(panel, 1, 3, strTxt,
-         text_color=strCol, text_size=size.small, bgcolor=colRowA)
+         text_color=strCol, text_size=size.tiny, bgcolor=colRowA)
 
+    // Row 4: In Zone
     obTxt = (inBullOB or inBullFvg) ? "Demand ▲" : (inBearOB or inBearFvg) ? "Supply ▼" : "None"
     obCol = (inBullOB or inBullFvg) ? colBull : (inBearOB or inBearFvg) ? colBear : color.new(color.white, 60)
     table.cell(panel, 0, 4, "In Zone",
-         text_color=color.new(color.white, 35), text_size=size.small, bgcolor=colRowB)
+         text_color=color.new(color.white, 35), text_size=size.tiny, bgcolor=colRowB)
     table.cell(panel, 1, 4, obTxt,
-         text_color=obCol, text_size=size.small, bgcolor=colRowB)
+         text_color=obCol, text_size=size.tiny, bgcolor=colRowB)
 
-    sessTxt = inSession ? "In Session" : "Off Hours"
-    sessCol = inSession ? colBull : color.new(color.white, 60)
-    table.cell(panel, 0, 5, "Session",
-         text_color=color.new(color.white, 35), text_size=size.small, bgcolor=colRowA)
-    table.cell(panel, 1, 5, sessTxt,
-         text_color=sessCol, text_size=size.small, bgcolor=colRowA)
-
-    rsiTxt = str.tostring(rsiVal, "#.0") + (rsiVal > 50 ? " ▲" : " ▼")
-    rsiCol = rsiVal > 60 ? colBull : rsiVal < 40 ? colBear : color.new(color.white, 40)
-    table.cell(panel, 0, 6, "RSI(" + str.tostring(rsiLen) + ")",
-         text_color=color.new(color.white, 35), text_size=size.small, bgcolor=colRowB)
-    table.cell(panel, 1, 6, rsiTxt,
-         text_color=rsiCol, text_size=size.small, bgcolor=colRowB)
-
-    volTxt = volSpike ? "Spike ▲" : "Normal"
-    volCol = volSpike ? color.new(colBull, 20) : color.new(color.white, 60)
-    table.cell(panel, 0, 7, "Volume",
-         text_color=color.new(color.white, 35), text_size=size.small, bgcolor=colRowA)
-    table.cell(panel, 1, 7, volTxt,
-         text_color=volCol, text_size=size.small, bgcolor=colRowA)
-
+    // Row 5: Signal (size.small — primary action row)
     readyBuy  = htfBull and mktStr == "bullish" and aboveVwap and inSession and rsiLongOk  and volOk
     readySell = htfBear and mktStr == "bearish" and belowVwap and inSession and rsiShortOk and volOk
     readyTxt  = readyBuy ? "LONG READY" : readySell ? "SHORT READY" : "Waiting..."
     readyCol  = readyBuy ? colBull : readySell ? colBear : color.new(color.white, 50)
     readyBg   = readyBuy ? color.new(colBull, 78) : readySell ? color.new(colBear, 78) : colRowB
-    table.cell(panel, 0, 8, "Signal",
+    table.cell(panel, 0, 5, "Signal",
          text_color=color.new(color.white, 35), text_size=size.small, bgcolor=readyBg)
-    table.cell(panel, 1, 8, readyTxt,
+    table.cell(panel, 1, 5, readyTxt,
          text_color=readyCol, text_size=size.small, bgcolor=readyBg)
 
-    // ── Scorecard (row 9) ─────────────────────────────────────────────────
+    // Row 6: Scorecard (size.small — merged)
     htfAligned    = htfBull or htfBear
     vwapAligned   = htfBull ? aboveVwap : htfBear ? belowVwap : false
     structAligned = htfBull ? (mktStr == "bullish") : htfBear ? (mktStr == "bearish") : false
@@ -1164,29 +1139,19 @@ if showBias and barstate.islast
     scoreTxt   = htfMark + "  " + vwapMark + "  " + strMark + "  │  " + str.tostring(totalScore) + "/6"
     scoreCol   = coreAllGreen ? (htfBull ? colBull : colBear) : coreCount == 2 ? color.new(#ffd700, 0) : color.new(color.white, 55)
     scoreBg    = coreAllGreen ? (htfBull ? color.new(colBull, 78) : color.new(colBear, 78)) : coreCount == 2 ? color.new(#3a3000, 40) : color.new(#0d0d0d, 62)
-    table.cell(panel, 0, 9, scoreTxt,
+    table.cell(panel, 0, 6, scoreTxt,
          text_color=scoreCol, text_size=size.small, bgcolor=scoreBg,
          text_halign=text.align_center)
-    table.merge_cells(panel, 0, 9, 1, 9)
+    table.merge_cells(panel, 0, 6, 1, 6)
 
-    // ── 3 EMA Status (row 10) ─────────────────────────────────────────────
-    ema3AlignBull = emaFastVal > emaMidVal and emaMidVal > emaSlowVal and close > emaFastVal
-    ema3AlignBear = emaFastVal < emaMidVal and emaMidVal < emaSlowVal and close < emaFastVal
-    emaTxt = ema3AlignBull ? "Aligned ▲" : ema3AlignBear ? "Aligned ▼" : "Mixed"
-    emaCol = ema3AlignBull ? colBull : ema3AlignBear ? colBear : color.new(color.white, 55)
-    table.cell(panel, 0, 10, "3 EMA",
-         text_color=color.new(color.white, 35), text_size=size.small, bgcolor=colRowA)
-    table.cell(panel, 1, 10, emaTxt,
-         text_color=emaCol, text_size=size.small, bgcolor=colRowA)
-
-    // ── News Window Status (row 11) ────────────────────────────────────────
+    // Row 7: News
     newsTxt = inNewsWindow ? "⚠ NEWS WINDOW" : "News Clear"
     newsCol = inNewsWindow ? color.new(#ffd700, 0) : color.new(color.white, 60)
     newsBg  = inNewsWindow ? color.new(#3a3000, 35) : colRowB
-    table.cell(panel, 0, 11, "News",
-         text_color=color.new(color.white, 35), text_size=size.small, bgcolor=newsBg)
-    table.cell(panel, 1, 11, newsTxt,
-         text_color=newsCol, text_size=size.small, bgcolor=newsBg)
+    table.cell(panel, 0, 7, "News",
+         text_color=color.new(color.white, 35), text_size=size.tiny, bgcolor=newsBg)
+    table.cell(panel, 1, 7, newsTxt,
+         text_color=newsCol, text_size=size.tiny, bgcolor=newsBg)
 
 // ── Trade Log + Win Rate Table (bottom-right) ─────────────────────────────────
 // 3 cols × 5 rows: header | 3 trades | win rate (merged)
