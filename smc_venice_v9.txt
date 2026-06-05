@@ -226,10 +226,10 @@ if showAsia
         _asiaH  := high
         _asiaLo := low
         array.push(asiaBoxes, box.new(_asiaL, _asiaH, bar_index + 1, _asiaLo,
-             bgcolor=color.new(#6c5ce7, 100), border_color=color.new(#6c5ce7, 70),
-             border_width=1, border_style=line.style_dashed,
+             bgcolor=color.new(#6c5ce7, 100), border_color=color.new(#6c5ce7, 82),
+             border_width=1, border_style=line.style_solid,
              text="Asia", text_size=size.tiny,
-             text_color=color.new(#6c5ce7, 10),
+             text_color=color.new(#6c5ce7, 30),
              text_halign=text.align_left, text_valign=text.align_top))
         if array.size(asiaBoxes) > maxSessBxs
             box.delete(array.shift(asiaBoxes))
@@ -248,10 +248,10 @@ if showLondon
         _lonH  := high
         _lonLo := low
         array.push(londonBoxes, box.new(_lonL, _lonH, bar_index + 1, _lonLo,
-             bgcolor=color.new(#fdcb6e, 100), border_color=color.new(#fdcb6e, 70),
-             border_width=1, border_style=line.style_dashed,
+             bgcolor=color.new(#fdcb6e, 100), border_color=color.new(#fdcb6e, 82),
+             border_width=1, border_style=line.style_solid,
              text="London", text_size=size.tiny,
-             text_color=color.new(#fdcb6e, 10),
+             text_color=color.new(#fdcb6e, 30),
              text_halign=text.align_left, text_valign=text.align_top))
         if array.size(londonBoxes) > maxSessBxs
             box.delete(array.shift(londonBoxes))
@@ -270,10 +270,10 @@ if showNyOpen
         _nyoH  := high
         _nyoLo := low
         array.push(nyOpenBoxes, box.new(_nyoL, _nyoH, bar_index + 1, _nyoLo,
-             bgcolor=color.new(#00c076, 100), border_color=color.new(#00c076, 70),
-             border_width=1, border_style=line.style_dashed,
+             bgcolor=color.new(#00c076, 100), border_color=color.new(#00c076, 82),
+             border_width=1, border_style=line.style_solid,
              text="NY Open", text_size=size.tiny,
-             text_color=color.new(#00c076, 10),
+             text_color=color.new(#00c076, 30),
              text_halign=text.align_left, text_valign=text.align_top))
         if array.size(nyOpenBoxes) > maxSessBxs
             box.delete(array.shift(nyOpenBoxes))
@@ -292,10 +292,10 @@ if showNyCls
         _nycH  := high
         _nycLo := low
         array.push(nyClsBoxes, box.new(_nycL, _nycH, bar_index + 1, _nycLo,
-             bgcolor=color.new(#ff3b5c, 100), border_color=color.new(#ff3b5c, 70),
-             border_width=1, border_style=line.style_dashed,
+             bgcolor=color.new(#ff3b5c, 100), border_color=color.new(#ff3b5c, 82),
+             border_width=1, border_style=line.style_solid,
              text="NY Close", text_size=size.tiny,
-             text_color=color.new(#ff3b5c, 10),
+             text_color=color.new(#ff3b5c, 30),
              text_halign=text.align_left, text_valign=text.align_top))
         if array.size(nyClsBoxes) > maxSessBxs
             box.delete(array.shift(nyClsBoxes))
