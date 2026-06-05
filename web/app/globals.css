@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+:root {
+  --smc-bg: #0d1117;
+  --smc-surface: #1a1a2e;
+  --smc-border: #2a2a3e;
+  --smc-green: #00c076;
+  --smc-red: #ff3b5c;
+  --smc-gold: #ffd700;
+  --smc-text: #e2e8f0;
+  --smc-muted: #94a3b8;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background-color: var(--smc-bg);
+  color: var(--smc-text);
+  margin: 0;
+  padding: 0;
+}
