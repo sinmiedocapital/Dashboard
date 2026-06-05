@@ -141,6 +141,8 @@ colSL         = color.new(#ff3b5c, 15)
 colTP1        = color.new(#00c076, 40)
 colTP2        = color.new(#00c076, 10)
 colNews       = color.new(#ffd700, 92)
+colBreaker    = color.new(#ff9f43, 62)
+colBreakerBrd = color.new(#ff9f43, 30)
 colEmaFast    = #f9ca24
 colEmaMid     = #6c5ce7
 colEmaSlow    = #a29bfe
@@ -358,32 +360,37 @@ var float[] obTop     = array.new_float(0)
 var float[] obBot     = array.new_float(0)
 var int[]   obBar     = array.new_int(0)
 var bool[]  obBull    = array.new_bool(0)
+var bool[]  obBreaker = array.new_bool(0)
 var box[]   obBoxRefs = array.new<box>(0)
 
 obScanLen = 30
 
 if chochBull or bosBull
-    // Clear invalidated bear OBs on bullish structure break
+    // Clear bearish zones (bear OBs + bull Breakers) on bullish structure break
     sz = array.size(obTop)
     if sz > 0
         for i = sz - 1 to 0
-            if not array.get(obBull, i)
+            _bull = array.get(obBull,    i)
+            _brk  = array.get(obBreaker, i)
+            if _bull == _brk  // currently bearish: (bull OB→Breaker) or (bear OB)
                 box.delete(array.get(obBoxRefs, i))
                 array.remove(obBoxRefs, i)
-                array.remove(obTop,  i)
-                array.remove(obBot,  i)
-                array.remove(obBar,  i)
-                array.remove(obBull, i)
+                array.remove(obTop,     i)
+                array.remove(obBot,     i)
+                array.remove(obBar,     i)
+                array.remove(obBull,    i)
+                array.remove(obBreaker, i)
     mktStr    := "bullish"
     swingHigh := na
     for k = 1 to obScanLen
         if close[k] < open[k]
             obH = obUseWicks ? high[k]  : math.max(open[k], close[k])
             obL = obUseWicks ? low[k]   : math.min(open[k], close[k])
-            array.unshift(obTop,  obH)
-            array.unshift(obBot,  obL)
-            array.unshift(obBar,  bar_index - k)
-            array.unshift(obBull, true)
+            array.unshift(obTop,     obH)
+            array.unshift(obBot,     obL)
+            array.unshift(obBar,     bar_index - k)
+            array.unshift(obBull,    true)
+            array.unshift(obBreaker, false)
             newBox = showOBs ? box.new(
                  bar_index - k, obH, bar_index, obL,
                  bgcolor=colOBBull, border_color=colOBBrdBull,
@@ -397,31 +404,36 @@ if chochBull or bosBull
                 array.pop(obBot)
                 array.pop(obBar)
                 array.pop(obBull)
+                array.pop(obBreaker)
                 box.delete(array.pop(obBoxRefs))
             break
 
 if chochBear or bosBear
-    // Clear invalidated bull OBs on bearish structure break
+    // Clear bullish zones (bull OBs + bear Breakers) on bearish structure break
     sz = array.size(obTop)
     if sz > 0
         for i = sz - 1 to 0
-            if array.get(obBull, i)
+            _bull = array.get(obBull,    i)
+            _brk  = array.get(obBreaker, i)
+            if _bull != _brk  // currently bullish: (bull OB) or (bear OB→Breaker)
                 box.delete(array.get(obBoxRefs, i))
                 array.remove(obBoxRefs, i)
-                array.remove(obTop,  i)
-                array.remove(obBot,  i)
-                array.remove(obBar,  i)
-                array.remove(obBull, i)
+                array.remove(obTop,     i)
+                array.remove(obBot,     i)
+                array.remove(obBar,     i)
+                array.remove(obBull,    i)
+                array.remove(obBreaker, i)
     mktStr   := "bearish"
     swingLow := na
     for k = 1 to obScanLen
         if close[k] > open[k]
             obH = obUseWicks ? high[k]  : math.max(open[k], close[k])
             obL = obUseWicks ? low[k]   : math.min(open[k], close[k])
-            array.unshift(obTop,  obH)
-            array.unshift(obBot,  obL)
-            array.unshift(obBar,  bar_index - k)
-            array.unshift(obBull, false)
+            array.unshift(obTop,     obH)
+            array.unshift(obBot,     obL)
+            array.unshift(obBar,     bar_index - k)
+            array.unshift(obBull,    false)
+            array.unshift(obBreaker, false)
             newBox = showOBs ? box.new(
                  bar_index - k, obH, bar_index, obL,
                  bgcolor=colOBBear, border_color=colOBBrdBear,
@@ -435,6 +447,7 @@ if chochBear or bosBear
                 array.pop(obBot)
                 array.pop(obBar)
                 array.pop(obBull)
+                array.pop(obBreaker)
                 box.delete(array.pop(obBoxRefs))
             break
 
@@ -489,7 +502,7 @@ if useLiq and not na(swingHigh)
 liqLongOk  = useLiq ? bullLiqSweep : true
 liqShortOk = useLiq ? bearLiqSweep : true
 
-// ── OB Zone Check (invalidate + track) ───────────────────────────────────────
+// ── OB Zone Check (invalidate → Breaker, or delete, + track) ─────────────────
 inBullOB    = false
 inBearOB    = false
 bullOBSlRef = float(na)
@@ -498,30 +511,65 @@ bearOBSlRef = float(na)
 nOB = array.size(obTop)
 if nOB > 0
     for i = nOB - 1 to 0
-        topV   = array.get(obTop,  i)
-        botV   = array.get(obBot,  i)
-        isBull = array.get(obBull, i)
-        if isBull and close < botV
-            box.delete(array.get(obBoxRefs, i))
-            array.remove(obBoxRefs, i)
-            array.remove(obTop,  i)
-            array.remove(obBot,  i)
-            array.remove(obBar,  i)
-            array.remove(obBull, i)
-        else if not isBull and close > topV
-            box.delete(array.get(obBoxRefs, i))
-            array.remove(obBoxRefs, i)
-            array.remove(obTop,  i)
-            array.remove(obBot,  i)
-            array.remove(obBar,  i)
-            array.remove(obBull, i)
-        else if close >= botV and close <= topV
-            if isBull
-                inBullOB    := true
-                bullOBSlRef := botV
+        topV      = array.get(obTop,     i)
+        botV      = array.get(obBot,     i)
+        isBull    = array.get(obBull,    i)
+        isBreaker = array.get(obBreaker, i)
+
+        if not isBreaker
+            // Regular OB: violation converts to Breaker (flip zone)
+            if isBull and close < botV
+                array.set(obBreaker, i, true)
+                b = array.get(obBoxRefs, i)
+                if not na(b)
+                    box.set_bgcolor(b,    colBreaker)
+                    box.set_border_color(b, colBreakerBrd)
+                    box.set_text(b,       "BRK ▼")
+                    box.set_text_color(b, color.new(#ff9f43, 10))
+            else if not isBull and close > topV
+                array.set(obBreaker, i, true)
+                b = array.get(obBoxRefs, i)
+                if not na(b)
+                    box.set_bgcolor(b,    colBreaker)
+                    box.set_border_color(b, colBreakerBrd)
+                    box.set_text(b,       "BRK ▲")
+                    box.set_text_color(b, color.new(#ff9f43, 10))
+            else if close >= botV and close <= topV
+                if isBull
+                    inBullOB    := true
+                    bullOBSlRef := botV
+                else
+                    inBearOB    := true
+                    bearOBSlRef := topV
+        else
+            // Breaker Block: isBull != isBreaker means currently bullish Breaker
+            isCurrBull = isBull != isBreaker
+            if isCurrBull
+                // Bullish Breaker (was bear OB): acts as demand / support
+                if close < botV
+                    box.delete(array.get(obBoxRefs, i))
+                    array.remove(obBoxRefs, i)
+                    array.remove(obTop,     i)
+                    array.remove(obBot,     i)
+                    array.remove(obBar,     i)
+                    array.remove(obBull,    i)
+                    array.remove(obBreaker, i)
+                else if close >= botV and close <= topV
+                    inBullOB    := true
+                    bullOBSlRef := botV
             else
-                inBearOB    := true
-                bearOBSlRef := topV
+                // Bearish Breaker (was bull OB): acts as supply / resistance
+                if close > topV
+                    box.delete(array.get(obBoxRefs, i))
+                    array.remove(obBoxRefs, i)
+                    array.remove(obTop,     i)
+                    array.remove(obBot,     i)
+                    array.remove(obBar,     i)
+                    array.remove(obBull,    i)
+                    array.remove(obBreaker, i)
+                else if close >= botV and close <= topV
+                    inBearOB    := true
+                    bearOBSlRef := topV
 
 if showOBs
     sz = array.size(obBoxRefs)
@@ -738,6 +786,16 @@ if not na(slTrack) and not slFired and bar_index > slSetBar
 // ── Win / Loss Log ────────────────────────────────────────────────────────────
 var int totalWins   = 0
 var int totalLosses = 0
+var int sessWins    = 0
+var int sessLosses  = 0
+
+// Reset session counters at the start of each new calendar day.
+// Because Pine runs through all history on load, sessWins/sessLosses
+// will correctly accumulate today's results even after a chart reload.
+newDay = not na(dayofmonth[1]) and (dayofmonth != dayofmonth[1] or month != month[1])
+if newDay
+    sessWins   := 0
+    sessLosses := 0
 
 var string[] logDir    = array.new_string(0)
 var float[]  logEntry  = array.new_float(0)
@@ -780,11 +838,13 @@ if tp1Hit and array.size(logResult) > 0
     if array.get(logResult, 0) == "Open"
         array.set(logResult, 0, "Win TP1")
         totalWins += 1
+        sessWins  += 1
 
 if slBreach and array.size(logResult) > 0
     if array.get(logResult, 0) == "Open"
         array.set(logResult, 0, "Loss SL")
         totalLosses += 1
+        sessLosses  += 1
 
 // ── Signal Plots ──────────────────────────────────────────────────────────────
 bgcolor(validBuy  ? color.new(colBull, 90) : na, title="Long Bar BG")
@@ -1146,7 +1206,9 @@ if showBias and barstate.islast
     htfMark    = htfAligned    ? "HTF✓" : "HTF✗"
     vwapMark   = vwapAligned   ? "VWAP✓" : "VWAP✗"
     strMark    = structAligned ? "STR✓" : "STR✗"
-    scoreTxt   = htfMark + "  " + vwapMark + "  " + strMark + "  │  " + str.tostring(totalScore) + "/6"
+    _allClosed = totalWins + totalLosses
+    _wrSfx     = _allClosed > 0 ? "  ·  W" + str.tostring(math.round(float(totalWins) / float(_allClosed) * 100)) + "%" : ""
+    scoreTxt   = htfMark + "  " + vwapMark + "  " + strMark + "  │  " + str.tostring(totalScore) + "/6" + _wrSfx
     scoreCol   = coreAllGreen ? (htfBull ? colBull : colBear) : coreCount == 2 ? color.new(#ffd700, 0) : color.new(color.white, 55)
     scoreBg    = coreAllGreen ? (htfBull ? color.new(colBull, 78) : color.new(colBear, 78)) : coreCount == 2 ? color.new(#3a3000, 40) : color.new(#0d0d0d, 62)
     table.cell(panel, 0, 7, scoreTxt,
@@ -1218,20 +1280,20 @@ if barstate.islast
                  text_color=color.new(color.white, 70), text_size=size.tiny, bgcolor=emptyBg,
                  text_halign=text.align_center)
 
-    // ── Win rate row (merged, row 4) ──
-    totalClosed = totalWins + totalLosses
-    winRate     = totalClosed > 0 ? (float(totalWins) / float(totalClosed)) * 100.0 : 0.0
-    wrTxt = (totalClosed > 0 ?
-         str.tostring(winRate, "#.0") + "%  " + str.tostring(totalWins) + "W / " + str.tostring(totalLosses) + "L  (" + str.tostring(totalClosed) + ")" :
-         "—  No Closed Trades")
-    wrCol = (winRate >= 60   ? color.new(colBull, 0) :
-             winRate >= 40   ? color.new(#ffd700, 0) :
-             totalClosed > 0 ? color.new(colBear, 0) :
-                               color.new(color.white, 50))
-    wrBg  = (winRate >= 60   ? color.new(colBull, 85) :
-             winRate >= 40   ? color.new(#ffd700, 88) :
-             totalClosed > 0 ? color.new(colBear, 85) :
-                               color.new(#0d0d0d, 60))
+    // ── Session stats row (merged, row 4) ──
+    sessClosed = sessWins + sessLosses
+    sessRate   = sessClosed > 0 ? (float(sessWins) / float(sessClosed)) * 100.0 : 0.0
+    wrTxt = sessClosed > 0 ?
+         "Today  " + str.tostring(sessWins) + "W / " + str.tostring(sessLosses) + "L  ·  " + str.tostring(sessRate, "#.0") + "%" :
+         "Today  —  No Closed Trades"
+    wrCol = (sessClosed == 0  ? color.new(color.white, 50) :
+             sessRate   >= 60 ? color.new(colBull, 0) :
+             sessRate   >= 40 ? color.new(#ffd700, 0) :
+                                color.new(colBear, 0))
+    wrBg  = (sessClosed == 0  ? color.new(#0d0d0d, 60) :
+             sessRate   >= 60 ? color.new(colBull, 85) :
+             sessRate   >= 40 ? color.new(#ffd700, 88) :
+                                color.new(colBear, 85))
     table.cell(logTable, 0, 4, wrTxt,
          text_color=wrCol, text_size=size.tiny, bgcolor=wrBg,
          text_halign=text.align_center)
