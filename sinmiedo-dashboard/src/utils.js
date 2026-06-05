@@ -3,6 +3,32 @@ export const STORAGE_KEY    = 'smcPLv2';
 export const MONTHLY_TARGET = 50000;
 export const DAILY_TARGET   = Math.round(50000 / 21); // ~$2,381
 
+/* ─── Profile ────────────────────────────────────────────────── */
+export const PROFILE_KEY = 'smcUser'
+
+export function safeName(name) {
+  return name.trim().toLowerCase().replace(/\s+/g, '_')
+}
+
+export function loadProfile() {
+  try { return JSON.parse(localStorage.getItem(PROFILE_KEY)) } catch { return null }
+}
+
+export function saveProfile(profile) {
+  try { localStorage.setItem(PROFILE_KEY, JSON.stringify(profile)) } catch {}
+}
+
+export function clearProfile() {
+  try { localStorage.removeItem(PROFILE_KEY) } catch {}
+}
+
+export function greeting() {
+  const h = new Date().getHours()
+  if (h < 12) return 'Good morning'
+  if (h < 17) return 'Good afternoon'
+  return 'Good evening'
+}
+
 /* ─── Date ──────────────────────────────────────────────────── */
 export function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -68,14 +94,37 @@ export function plColor(n) {
 }
 
 /* ─── Storage ───────────────────────────────────────────────── */
-export function loadEntries() {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
+function entriesKey(name) {
+  return name ? `smcPLv2_${safeName(name)}` : STORAGE_KEY
+}
+
+export function loadEntries(name) {
+  try { return JSON.parse(localStorage.getItem(entriesKey(name)) || '[]'); }
   catch { return []; }
 }
 
-export function saveEntries(entries) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(entries)); }
+export function saveEntries(entries, name) {
+  try { localStorage.setItem(entriesKey(name), JSON.stringify(entries)); }
   catch {}
+}
+
+export function clearEntries(name) {
+  try { localStorage.removeItem(entriesKey(name)) } catch {}
+}
+
+/* ─── Accounts (prop firms + own capital) ────────────────────── */
+function accountsKey(name) { return `smcAccounts_${safeName(name)}` }
+
+export function loadAccounts(name) {
+  try { return JSON.parse(localStorage.getItem(accountsKey(name)) || '[]') } catch { return [] }
+}
+
+export function saveAccounts(accounts, name) {
+  try { localStorage.setItem(accountsKey(name), JSON.stringify(accounts)) } catch {}
+}
+
+export function clearAccounts(name) {
+  try { localStorage.removeItem(accountsKey(name)) } catch {}
 }
 
 export function upsertEntry(entries, newEntry) {
