@@ -1,5 +1,5 @@
 //@version=6
-indicator("SMC Venice [Scalper] v9",
+indicator("SMC Venice [Scalper] v9  ·  Sin Miedo Capital",
      overlay=true,
      max_boxes_count=200,
      max_lines_count=250,
@@ -132,8 +132,8 @@ colFvgBull    = color.new(#00c076, 86)
 colFvgBear    = color.new(#ff3b5c, 86)
 colFvgBullMit = color.new(#00c076, 72)
 colFvgBearMit = color.new(#ff3b5c, 72)
-colOBBrdBull  = color.new(#00c076, 20)
-colOBBrdBear  = color.new(#ff3b5c, 20)
+colOBBrdBull  = color.new(#00c076, 50)
+colOBBrdBear  = color.new(#ff3b5c, 50)
 colFvgBrdBull = color.new(#00c076, 50)
 colFvgBrdBear = color.new(#ff3b5c, 50)
 colEntry      = color.new(color.white, 30)
@@ -224,8 +224,9 @@ if showAsia
         _asiaH  := high
         _asiaLo := low
         array.push(asiaBoxes, box.new(_asiaL, _asiaH, bar_index + 1, _asiaLo,
-             bgcolor=color.new(#6c5ce7, 94), border_color=color.new(#6c5ce7, 55),
-             border_width=1, text="Asia", text_size=size.tiny,
+             bgcolor=color.new(#6c5ce7, 100), border_color=color.new(#6c5ce7, 70),
+             border_width=1, border_style=line.style_dashed,
+             text="Asia", text_size=size.tiny,
              text_color=color.new(#6c5ce7, 10),
              text_halign=text.align_left, text_valign=text.align_top))
         if array.size(asiaBoxes) > maxSessBxs
@@ -245,8 +246,9 @@ if showLondon
         _lonH  := high
         _lonLo := low
         array.push(londonBoxes, box.new(_lonL, _lonH, bar_index + 1, _lonLo,
-             bgcolor=color.new(#fdcb6e, 94), border_color=color.new(#fdcb6e, 55),
-             border_width=1, text="London", text_size=size.tiny,
+             bgcolor=color.new(#fdcb6e, 100), border_color=color.new(#fdcb6e, 70),
+             border_width=1, border_style=line.style_dashed,
+             text="London", text_size=size.tiny,
              text_color=color.new(#fdcb6e, 10),
              text_halign=text.align_left, text_valign=text.align_top))
         if array.size(londonBoxes) > maxSessBxs
@@ -266,8 +268,9 @@ if showNyOpen
         _nyoH  := high
         _nyoLo := low
         array.push(nyOpenBoxes, box.new(_nyoL, _nyoH, bar_index + 1, _nyoLo,
-             bgcolor=color.new(#00c076, 94), border_color=color.new(#00c076, 55),
-             border_width=1, text="NY Open", text_size=size.tiny,
+             bgcolor=color.new(#00c076, 100), border_color=color.new(#00c076, 70),
+             border_width=1, border_style=line.style_dashed,
+             text="NY Open", text_size=size.tiny,
              text_color=color.new(#00c076, 10),
              text_halign=text.align_left, text_valign=text.align_top))
         if array.size(nyOpenBoxes) > maxSessBxs
@@ -287,8 +290,9 @@ if showNyCls
         _nycH  := high
         _nycLo := low
         array.push(nyClsBoxes, box.new(_nycL, _nycH, bar_index + 1, _nycLo,
-             bgcolor=color.new(#ff3b5c, 94), border_color=color.new(#ff3b5c, 55),
-             border_width=1, text="NY Close", text_size=size.tiny,
+             bgcolor=color.new(#ff3b5c, 100), border_color=color.new(#ff3b5c, 70),
+             border_width=1, border_style=line.style_dashed,
+             text="NY Close", text_size=size.tiny,
              text_color=color.new(#ff3b5c, 10),
              text_halign=text.align_left, text_valign=text.align_top))
         if array.size(nyClsBoxes) > maxSessBxs
@@ -1024,7 +1028,7 @@ if showVrvp and barstate.islast
                  bgcolor=bColor, border_color=color.new(color.gray, 88), border_width=0))
 
 // ── Correlation Panel (top-left) ──────────────────────────────────────────────
-var table corrTable = table.new(position.top_left, 2, 5,
+var table corrTable = table.new(position.bottom_left, 2, 5,
      bgcolor      = color.new(#0d0d0d, 55),
      border_color = color.new(color.gray, 60),
      border_width = 1,
@@ -1060,8 +1064,8 @@ if showCorr and barstate.islast
         table.cell(corrTable, 1, r + 1, biasT,
              text_color=biasC, text_size=size.tiny, bgcolor=rowBg)
 
-// ── Info Panel (middle-right) ────────────────────────────────────────────────
-var table panel = table.new(position.middle_right, 2, 8,
+// ── Info Panel (top-right) ────────────────────────────────────────────────────
+var table panel = table.new(position.top_right, 2, 9,
      bgcolor      = color.new(#0d0d0d, 55),
      border_color = color.new(color.gray, 60),
      border_width = 1,
@@ -1072,59 +1076,65 @@ colRowA = color.new(#0d0d0d, 60)
 colRowB = color.new(#111122, 55)
 
 if showBias and barstate.islast
-    // Row 0: Header
+    // Row 0: Indicator title
     table.cell(panel, 0, 0, "SMC Venice v9",
          text_color=color.new(color.white, 10), text_size=size.small,
          bgcolor=color.new(#1a1a2e, 20), text_halign=text.align_center)
     table.merge_cells(panel, 0, 0, 1, 0)
 
-    // Row 1: HTF Bias
+    // Row 1: Brand sub-header
+    table.cell(panel, 0, 1, "Sin Miedo Capital  ·  Trading Without Fear",
+         text_color=color.new(color.white, 72), text_size=size.tiny,
+         bgcolor=color.new(#0a0a1a, 30), text_halign=text.align_center)
+    table.merge_cells(panel, 0, 1, 1, 1)
+
+    // Row 2: HTF Bias
     htfTxt = htfBull ? "BULL ▲" : htfBear ? "BEAR ▼" : "NEUTRAL"
     htfCol = htfBull ? colBull  : htfBear ? colBear  : color.gray
-    table.cell(panel, 0, 1, "HTF Bias",
+    table.cell(panel, 0, 2, "HTF Bias",
          text_color=color.new(color.white, 35), text_size=size.tiny, bgcolor=colRowA)
-    table.cell(panel, 1, 1, htfTxt,
+    table.cell(panel, 1, 2, htfTxt,
          text_color=htfCol, text_size=size.tiny, bgcolor=colRowA)
 
-    // Row 2: Filters — VWAP / Session / RSI / Vol condensed into one merged row
+    // Row 3: Filters — VWAP / Session / RSI / Vol condensed into one merged row
     vwapMk  = aboveVwap ? "VWAP✓" : "VWAP✗"
     sessMk  = inSession ? "Sess✓" : "Sess✗"
     rsiMk   = (htfBull and rsiLongOk) or (htfBear and rsiShortOk) ? "RSI✓" : "RSI✗"
     volMk   = volOk ? "Vol✓" : "Vol✗"
     filtrTxt = vwapMk + "  " + sessMk + "  " + rsiMk + "  " + volMk
-    table.cell(panel, 0, 2, filtrTxt,
+    table.cell(panel, 0, 3, filtrTxt,
          text_color=color.new(color.white, 42), text_size=size.tiny, bgcolor=colRowB,
          text_halign=text.align_center)
-    table.merge_cells(panel, 0, 2, 1, 2)
+    table.merge_cells(panel, 0, 3, 1, 3)
 
-    // Row 3: Structure
+    // Row 4: Structure
     strTxt = mktStr == "bullish" ? "Bullish ▲" : mktStr == "bearish" ? "Bearish ▼" : "Neutral"
     strCol = mktStr == "bullish" ? colBull : mktStr == "bearish" ? colBear : color.gray
-    table.cell(panel, 0, 3, "Structure",
+    table.cell(panel, 0, 4, "Structure",
          text_color=color.new(color.white, 35), text_size=size.tiny, bgcolor=colRowA)
-    table.cell(panel, 1, 3, strTxt,
+    table.cell(panel, 1, 4, strTxt,
          text_color=strCol, text_size=size.tiny, bgcolor=colRowA)
 
-    // Row 4: In Zone
+    // Row 5: In Zone
     obTxt = (inBullOB or inBullFvg) ? "Demand ▲" : (inBearOB or inBearFvg) ? "Supply ▼" : "None"
     obCol = (inBullOB or inBullFvg) ? colBull : (inBearOB or inBearFvg) ? colBear : color.new(color.white, 60)
-    table.cell(panel, 0, 4, "In Zone",
+    table.cell(panel, 0, 5, "In Zone",
          text_color=color.new(color.white, 35), text_size=size.tiny, bgcolor=colRowB)
-    table.cell(panel, 1, 4, obTxt,
+    table.cell(panel, 1, 5, obTxt,
          text_color=obCol, text_size=size.tiny, bgcolor=colRowB)
 
-    // Row 5: Signal (size.small — primary action row)
+    // Row 6: Signal (size.small — primary action row)
     readyBuy  = htfBull and mktStr == "bullish" and aboveVwap and inSession and rsiLongOk  and volOk
     readySell = htfBear and mktStr == "bearish" and belowVwap and inSession and rsiShortOk and volOk
     readyTxt  = readyBuy ? "LONG READY" : readySell ? "SHORT READY" : "Waiting..."
     readyCol  = readyBuy ? colBull : readySell ? colBear : color.new(color.white, 50)
     readyBg   = readyBuy ? color.new(colBull, 78) : readySell ? color.new(colBear, 78) : colRowB
-    table.cell(panel, 0, 5, "Signal",
+    table.cell(panel, 0, 6, "Signal",
          text_color=color.new(color.white, 35), text_size=size.small, bgcolor=readyBg)
-    table.cell(panel, 1, 5, readyTxt,
+    table.cell(panel, 1, 6, readyTxt,
          text_color=readyCol, text_size=size.small, bgcolor=readyBg)
 
-    // Row 6: Scorecard (size.small — merged)
+    // Row 7: Scorecard (size.small — merged)
     htfAligned    = htfBull or htfBear
     vwapAligned   = htfBull ? aboveVwap : htfBear ? belowVwap : false
     structAligned = htfBull ? (mktStr == "bullish") : htfBear ? (mktStr == "bearish") : false
@@ -1139,18 +1149,18 @@ if showBias and barstate.islast
     scoreTxt   = htfMark + "  " + vwapMark + "  " + strMark + "  │  " + str.tostring(totalScore) + "/6"
     scoreCol   = coreAllGreen ? (htfBull ? colBull : colBear) : coreCount == 2 ? color.new(#ffd700, 0) : color.new(color.white, 55)
     scoreBg    = coreAllGreen ? (htfBull ? color.new(colBull, 78) : color.new(colBear, 78)) : coreCount == 2 ? color.new(#3a3000, 40) : color.new(#0d0d0d, 62)
-    table.cell(panel, 0, 6, scoreTxt,
+    table.cell(panel, 0, 7, scoreTxt,
          text_color=scoreCol, text_size=size.small, bgcolor=scoreBg,
          text_halign=text.align_center)
-    table.merge_cells(panel, 0, 6, 1, 6)
+    table.merge_cells(panel, 0, 7, 1, 7)
 
-    // Row 7: News
+    // Row 8: News
     newsTxt = inNewsWindow ? "⚠ NEWS WINDOW" : "News Clear"
     newsCol = inNewsWindow ? color.new(#ffd700, 0) : color.new(color.white, 60)
     newsBg  = inNewsWindow ? color.new(#3a3000, 35) : colRowB
-    table.cell(panel, 0, 7, "News",
+    table.cell(panel, 0, 8, "News",
          text_color=color.new(color.white, 35), text_size=size.tiny, bgcolor=newsBg)
-    table.cell(panel, 1, 7, newsTxt,
+    table.cell(panel, 1, 8, newsTxt,
          text_color=newsCol, text_size=size.tiny, bgcolor=newsBg)
 
 // ── Trade Log + Win Rate Table (bottom-right) ─────────────────────────────────
