@@ -30,11 +30,13 @@ i_hvnThresh = input.float(70.0, "HVN Threshold % of POC",  minval=10,  maxval=10
 i_lvnThresh = input.float(25.0, "LVN Threshold % of POC",  minval=1,   maxval=50,  group="Profile Settings")
 i_hvnCount  = input.int(3,     "Max HVNs Shown",            minval=1,   maxval=10,  group="Profile Settings")
 
-i_showHistogram = input.bool(true, "Show Histogram",         group="Display")
-i_showLines     = input.bool(true, "Show Key Level Lines",   group="Display")
-i_histBars      = input.int(40,   "Histogram Width (bars)", minval=5,   maxval=200, group="Display")
-i_lineWidth     = input.int(1,    "Line Width",              minval=1,   maxval=4,   group="Display")
-i_extLeft       = input.bool(true, "Extend Lines Left",      group="Display")
+i_showHistogram = input.bool(true, "Show Histogram",                group="Display")
+i_showLines     = input.bool(true, "Show Key Level Lines",        group="Display")
+i_histBars      = input.int(40,   "Histogram Width (bars)",      minval=5,  maxval=200, group="Display")
+i_histPad       = input.int(5,    "Histogram Right Pad (bars)",  minval=0,  maxval=50,  group="Display",
+                     tooltip="Gap between the current bar and the histogram's right edge. Increase to reduce candle overlap.")
+i_lineWidth     = input.int(1,    "Line Width",                   minval=1,  maxval=4,   group="Display")
+i_extLeft       = input.bool(true, "Extend Lines Left",           group="Display")
 
 i_colPOC    = input.color(color.new(#7B1FA2, 0),  "POC",           group="Colors")
 i_colHVNSup = input.color(color.new(#1B5E20, 0),  "HVN Support",   group="Colors")
@@ -369,14 +371,15 @@ if barstate.isconfirmed and not i_lock
 if barstate.islast and not na(f_poc)
     clearDrawings()
 
-    cb      = bar_index
-    extMode = i_extLeft ? extend.left : extend.none
+    cb        = bar_index
+    extMode   = i_extLeft ? extend.left : extend.none
+    histRight = cb - i_histPad
+    labelX    = histRight + 1
 
     f_zoneStateLive := calcZoneState(close, f_poc, f_vah, f_val, f_rowSize, f_hvns, f_lvns)
 
     // ── BLOCK A: Histogram ──────────────────────────────────
     if i_showHistogram and array.size(f_rVols) > 0
-        histRight = cb + 1
         maxVol    = 0.0
         for i = 0 to array.size(f_rVols) - 1
             maxVol := math.max(maxVol, array.get(f_rVols, i))
@@ -474,7 +477,7 @@ if barstate.islast and not na(f_poc)
 
             if not na(nearAbove)
                 lbA = label.new(
-                     x         = cb + 1,
+                     x         = labelX,
                      y         = nearAbove,
                      text      = str.tostring(nearAbove, format.mintick),
                      xloc      = xloc.bar_index,
@@ -486,7 +489,7 @@ if barstate.islast and not na(f_poc)
 
             if not na(nearBelow)
                 lbB = label.new(
-                     x         = cb + 1,
+                     x         = labelX,
                      y         = nearBelow,
                      text      = str.tostring(nearBelow, format.mintick),
                      xloc      = xloc.bar_index,
@@ -499,7 +502,7 @@ if barstate.islast and not na(f_poc)
     // Zone state label
     if i_showZone
         lbZ = label.new(
-             x         = cb + 1,
+             x         = labelX,
              y         = f_vah,
              text      = zoneText(f_zoneStateLive),
              xloc      = xloc.bar_index,
@@ -515,7 +518,7 @@ if barstate.islast and not na(f_poc)
              str.tostring(i_lookback) + " bars" : i_rangeMode
         lockStr  = i_lock ? " · LOCKED" : ""
         lbI = label.new(
-             x         = cb + 1,
+             x         = labelX,
              y         = f_poc,
              text      = "[" + rangeStr + lockStr + "]",
              xloc      = xloc.bar_index,
