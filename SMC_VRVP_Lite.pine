@@ -1,0 +1,207 @@
+//@version=6
+// ============================================================
+// SMC VRVP Lite
+// Sin Miedo Capital
+// ============================================================
+// A beginner-friendly volume profile. Three things only:
+//   1. Histogram — where price spent time
+//   2. Most Volume line — the price level with the highest volume
+//   3. Value Zone fill — where 70% of all volume traded
+// ============================================================
+indicator("SMC VRVP Lite", overlay=true, max_boxes_count=500, max_lines_count=10, max_labels_count=10)
+
+// ─── INPUTS ──────────────────────────────────────────────────
+
+i_lookback  = input.int(200,    "Lookback Bars",          minval=10, maxval=2000, group="Settings")
+i_numRows   = input.int(48,     "Detail Level",           minval=10, maxval=100,  group="Settings",
+                  tooltip="Higher = more detail in the histogram. 48 is a good default.")
+i_vaPercent = input.float(70.0, "Value Zone %",           minval=1,  maxval=99,   group="Settings",
+                  tooltip="The % of total volume that defines the Value Zone. Standard is 70%.")
+
+i_histBars  = input.int(40,    "Histogram Width (bars)",  minval=5,  maxval=200,  group="Display")
+i_position  = input.string("Overlay", "Position",
+                  options=["Overlay", "Right Side"],                              group="Display",
+                  tooltip="Overlay: histogram covers the lookback range. Right Side: floats in blank space to the right of the last candle.")
+
+i_colVol    = input.color(color.new(#FFFFFF, 75), "Histogram",          group="Colors")
+i_colPOC    = input.color(color.new(#7B1FA2, 0),  "Most Volume (POC)",  group="Colors")
+i_colVA     = input.color(color.new(#9E9E9E, 0),  "Value Zone",         group="Colors")
+
+i_showPOC     = input.bool(true, "Show Most Volume Line",  group="Toggles")
+i_showVAFill  = input.bool(true, "Show Value Zone Fill",   group="Toggles")
+i_showLabels  = input.bool(true, "Show Labels",            group="Toggles")
+
+// ─── STATE ───────────────────────────────────────────────────
+
+var float f_poc     = na
+var float f_vah     = na
+var float f_val     = na
+var float f_rowSize = na
+
+var array<float> f_rPrices = array.new<float>()
+var array<float> f_rVols   = array.new<float>()
+
+var array<line>  g_lines  = array.new<line>()
+var array<label> g_labels = array.new<label>()
+var array<box>   g_boxes  = array.new<box>()
+
+// ─── CLEAR DRAWINGS ──────────────────────────────────────────
+
+clearDrawings() =>
+    for ln in g_lines
+        line.delete(ln)
+    array.clear(g_lines)
+    for lb in g_labels
+        label.delete(lb)
+    array.clear(g_labels)
+    for bx in g_boxes
+        box.delete(bx)
+    array.clear(g_boxes)
+
+// ─── CALC PROFILE ────────────────────────────────────────────
+
+calcProfile(lookback, numRows) =>
+    safeStart = math.min(lookback, bar_index)
+
+    hi = high[0]
+    lo = low[0]
+    for i = 1 to safeStart
+        hi := math.max(hi, high[i])
+        lo := math.min(lo, low[i])
+
+    rowSz = (hi - lo) / numRows
+    if rowSz <= 0
+        rowSz := syminfo.mintick
+
+    rPrices = array.new<float>(numRows, 0.0)
+    rVols   = array.new<float>(numRows, 0.0)
+    for i = 0 to numRows - 1
+        array.set(rPrices, i, lo + i * rowSz + rowSz / 2)
+
+    totVol = 0.0
+    for i = 0 to safeStart
+        bHigh = high[i]
+        bLow  = low[i]
+        bVol  = volume[i]
+        bSpan = bHigh - bLow
+
+        for r = 0 to numRows - 1
+            rBot    = lo + r * rowSz
+            rTop    = rBot + rowSz
+            overlap = math.min(bHigh, rTop) - math.max(bLow, rBot)
+            if overlap > 0
+                frac = bSpan > 0 ? overlap / bSpan : 1.0 / numRows
+                vol  = bVol * frac
+                array.set(rVols, r, array.get(rVols, r) + vol)
+                totVol += vol
+
+    [rPrices, rVols, totVol, rowSz]
+
+// ─── CALC VALUE ZONE ─────────────────────────────────────────
+
+calcValueZone(rVols, pocIdx, totalVol, vaPercent) =>
+    target      = totalVol * vaPercent / 100.0
+    accumulated = array.get(rVols, pocIdx)
+    hi          = pocIdx
+    lo          = pocIdx
+
+    while accumulated < target
+        upVol = hi + 1 < array.size(rVols) ? array.get(rVols, hi + 1) : 0.0
+        dnVol = lo - 1 >= 0               ? array.get(rVols, lo - 1) : 0.0
+        if upVol == 0.0 and dnVol == 0.0
+            break
+        if upVol >= dnVol
+            hi          += 1
+            accumulated += upVol
+        else
+            lo          -= 1
+            accumulated += dnVol
+    [lo, hi]
+
+// ─── RECALCULATE ON BAR CLOSE ────────────────────────────────
+
+if barstate.isconfirmed
+    [rP, rV, totV, rowSz] = calcProfile(i_lookback, i_numRows)
+
+    pocIdx = 0
+    pocVol = 0.0
+    for i = 0 to array.size(rV) - 1
+        v = array.get(rV, i)
+        if v > pocVol
+            pocVol := v
+            pocIdx := i
+
+    [valIdx, vahIdx] = calcValueZone(rV, pocIdx, totV, i_vaPercent)
+
+    f_poc     := array.get(rP, pocIdx)
+    f_vah     := array.get(rP, vahIdx)
+    f_val     := array.get(rP, valIdx)
+    f_rowSize := rowSz
+
+    array.clear(f_rPrices)
+    array.clear(f_rVols)
+    for i = 0 to array.size(rP) - 1
+        array.push(f_rPrices, array.get(rP, i))
+        array.push(f_rVols,   array.get(rV, i))
+
+// ─── DRAW ────────────────────────────────────────────────────
+
+if barstate.islast and not na(f_poc)
+    clearDrawings()
+
+    cb        = bar_index
+    isOverlay = i_position == "Overlay"
+    anchor    = isOverlay ? cb : cb + 1
+    labelX    = isOverlay ? cb + 1 : cb + 1 + i_histBars + 1
+
+    // Histogram
+    if array.size(f_rVols) > 0
+        maxVol = 0.0
+        for i = 0 to array.size(f_rVols) - 1
+            maxVol := math.max(maxVol, array.get(f_rVols, i))
+
+        if maxVol > 0
+            for i = 0 to array.size(f_rVols) - 1
+                rv = array.get(f_rVols,   i)
+                rp = array.get(f_rPrices, i)
+                w  = math.max(1, math.round(i_histBars * rv / maxVol))
+                bL = isOverlay ? anchor - w : anchor
+                bR = isOverlay ? anchor     : anchor + w
+                bx = box.new(
+                     left=bL, top=rp + f_rowSize / 2,
+                     right=bR, bottom=rp - f_rowSize / 2,
+                     bgcolor=i_colVol,
+                     border_color=color.new(color.white, 100), border_width=0)
+                array.push(g_boxes, bx)
+
+    // Value Zone fill
+    if i_showVAFill
+        vaRight = isOverlay ? anchor : anchor + i_histBars
+        bxVA = box.new(
+               left=math.max(0, cb - 5000), top=f_vah,
+               right=vaRight, bottom=f_val,
+               bgcolor=color.new(i_colVA, 92),
+               border_color=color.new(color.white, 100), border_width=0)
+        array.push(g_boxes, bxVA)
+
+        if i_showLabels
+            lb = label.new(labelX, (f_vah + f_val) / 2,
+                 str.tostring(i_vaPercent, "#") + "% Value Zone",
+                 xloc=xloc.bar_index,
+                 color=color.new(i_colVA, 60), textcolor=color.white,
+                 style=label.style_label_left, size=size.small)
+            array.push(g_labels, lb)
+
+    // Most Volume (POC) line + label
+    if i_showPOC
+        ln = line.new(cb, f_poc, cb - 1, f_poc,
+                      xloc=xloc.bar_index, color=i_colPOC,
+                      width=2, extend=extend.left)
+        array.push(g_lines, ln)
+
+        if i_showLabels
+            lb = label.new(labelX, f_poc, "Most Volume",
+                 xloc=xloc.bar_index,
+                 color=color.new(i_colPOC, 20), textcolor=color.white,
+                 style=label.style_label_left, size=size.small)
+            array.push(g_labels, lb)
