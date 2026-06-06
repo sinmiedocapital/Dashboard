@@ -23,7 +23,7 @@ i_position  = input.string("Overlay", "Position",
                   options=["Overlay", "Right Side"],                              group="Display",
                   tooltip="Overlay: histogram covers the lookback range. Right Side: floats in blank space to the right of the last candle.")
 
-i_colVol    = input.color(color.new(#FFFFFF, 75), "Histogram",          group="Colors")
+i_colVol    = input.color(color.new(#FFFFFF, 55), "Histogram",          group="Colors")
 i_colPOC    = input.color(color.new(#7B1FA2, 0),  "Most Volume (POC)",  group="Colors")
 i_colVA     = input.color(color.new(#9E9E9E, 0),  "Value Zone",         group="Colors")
 
@@ -185,7 +185,8 @@ if barstate.islast and not na(f_poc)
         array.push(g_boxes, bxVA)
 
         if i_showLabels
-            lb = label.new(labelX, (f_vah + f_val) / 2,
+            vaLabelY = f_vah - f_rowSize
+            lb = label.new(labelX, vaLabelY,
                  str.tostring(i_vaPercent, "#") + "% Value Zone",
                  xloc=xloc.bar_index,
                  color=color.new(i_colVA, 60), textcolor=color.white,
