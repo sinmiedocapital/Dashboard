@@ -13,8 +13,8 @@ htfEmaLen = input.int(50,         "HTF EMA Length",  minval=1, maxval=200, group
 showBias  = input.bool(true,      "Show Info Panel", group=grpHTF)
 
 grpVwap = "VWAP"
-showVwap   = input.bool(true, "Show VWAP Line", group=grpVwap)
-vwapFilter = input.bool(true, "VWAP as Filter", group=grpVwap)
+showVwap   = input.bool(false, "Show VWAP Line", group=grpVwap)
+vwapFilter = input.bool(true,  "VWAP as Filter", group=grpVwap)
 
 grpStruct = "Market Structure"
 structLen  = input.int(5,     "Pivot Lookback",  minval=2, maxval=20, group=grpStruct)
@@ -23,19 +23,19 @@ showStruct = input.bool(true, "Show BOS/CHoCH",  group=grpStruct)
 grpOB = "Order Blocks"
 showOBs    = input.bool(true, "Show Order Blocks", group=grpOB,
      tooltip="Last opposite-direction candle before each BOS/CHoCH.")
-maxOBs     = input.int(4,    "Max Active OBs",   minval=1, maxval=10, group=grpOB)
+maxOBs     = input.int(2,    "Max Active OBs",   minval=1, maxval=10, group=grpOB)
 obUseWicks = input.bool(true, "Use Full Candle Range (Wicks)", group=grpOB,
      tooltip="ON: OB zone extends to wick high/low. OFF: body only.")
 
 grpFvg = "Fair Value Gaps"
 fvgMinPct = input.float(0.03, "Min FVG Size (%)", minval=0.01, maxval=0.5,  step=0.01, group=grpFvg)
 fvgMaxPct = input.float(0.20, "Max FVG Size (%)", minval=0.05, maxval=2.0,  step=0.01, group=grpFvg)
-maxFvgs   = input.int(4,      "Max Active FVGs",  minval=1, maxval=20, group=grpFvg)
+maxFvgs   = input.int(2,      "Max Active FVGs",  minval=1, maxval=20, group=grpFvg)
 showFvgs  = input.bool(true,  "Show FVG Zones",   group=grpFvg)
 
 grpSessExt = "Sessions"
-showAsia   = input.bool(true,  "Show Asia/Overnight  (6PM–2AM ET)",  group=grpSessExt)
-showLondon = input.bool(true,  "Show London          (2AM–8AM ET)",  group=grpSessExt)
+showAsia   = input.bool(false, "Show Asia/Overnight  (6PM–2AM ET)",  group=grpSessExt)
+showLondon = input.bool(false, "Show London          (2AM–8AM ET)",  group=grpSessExt)
 showNyOpen = input.bool(true,  "Show NY Power Hour   (9:30–10:30)",  group=grpSessExt)
 showNyCls  = input.bool(false, "Show NY Close        (3:30–4:00 ET)", group=grpSessExt)
 
@@ -329,10 +329,7 @@ if chochBull or bosBull
             newBox = showOBs ? box.new(
                  bar_index - k, obH, bar_index, obL,
                  bgcolor=colOBBull, border_color=colOBBrdBull,
-                 border_width=2, border_style=line.style_solid,
-                 text="OB ▲", text_size=size.tiny,
-                 text_color=color.new(colBull, 10),
-                 text_halign=text.align_right, text_valign=text.align_top) : na
+                 border_width=1, border_style=line.style_solid) : na
             array.unshift(obBoxRefs, newBox)
             if array.size(obTop) > maxOBs
                 array.pop(obTop)
@@ -371,10 +368,7 @@ if chochBear or bosBear
             newBox = showOBs ? box.new(
                  bar_index - k, obH, bar_index, obL,
                  bgcolor=colOBBear, border_color=colOBBrdBear,
-                 border_width=2, border_style=line.style_solid,
-                 text="OB ▼", text_size=size.tiny,
-                 text_color=color.new(colBear, 10),
-                 text_halign=text.align_right, text_valign=text.align_bottom) : na
+                 border_width=1, border_style=line.style_solid) : na
             array.unshift(obBoxRefs, newBox)
             if array.size(obTop) > maxOBs
                 array.pop(obTop)
@@ -455,18 +449,14 @@ if nOB > 0
                 array.set(obBreaker, i, true)
                 b = array.get(obBoxRefs, i)
                 if not na(b)
-                    box.set_bgcolor(b,       colBreaker)
-                    box.set_border_color(b,  colBreakerBrd)
-                    box.set_text(b,          "BRK ▼")
-                    box.set_text_color(b,    color.new(#ff9f43, 10))
+                    box.set_bgcolor(b,      colBreaker)
+                    box.set_border_color(b, colBreakerBrd)
             else if not isBull and close > topV
                 array.set(obBreaker, i, true)
                 b = array.get(obBoxRefs, i)
                 if not na(b)
-                    box.set_bgcolor(b,       colBreaker)
-                    box.set_border_color(b,  colBreakerBrd)
-                    box.set_text(b,          "BRK ▲")
-                    box.set_text_color(b,    color.new(#ff9f43, 10))
+                    box.set_bgcolor(b,      colBreaker)
+                    box.set_border_color(b, colBreakerBrd)
             else if close >= botV and close <= topV
                 if isBull
                     inBullOB    := true
@@ -531,9 +521,7 @@ if newBullFvg
     newFvgBox = showFvgs ? box.new(
          bar_index[1], low, bar_index, high[2],
          bgcolor=colFvgBull, border_color=colFvgBrdBull,
-         border_width=1, text="FVG", text_size=size.tiny,
-         text_color=color.new(color.white, 40),
-         text_halign=text.align_left, text_valign=text.align_bottom) : na
+         border_width=1) : na
     array.unshift(fvgBoxRefs, newFvgBox)
     if array.size(fvgTop) > maxFvgs
         array.pop(fvgTop)
@@ -550,9 +538,7 @@ if newBearFvg
     newFvgBox = showFvgs ? box.new(
          bar_index[1], low[2], bar_index, high,
          bgcolor=colFvgBear, border_color=colFvgBrdBear,
-         border_width=1, text="FVG", text_size=size.tiny,
-         text_color=color.new(color.white, 40),
-         text_halign=text.align_left, text_valign=text.align_top) : na
+         border_width=1) : na
     array.unshift(fvgBoxRefs, newFvgBox)
     if array.size(fvgTop) > maxFvgs
         array.pop(fvgTop)
