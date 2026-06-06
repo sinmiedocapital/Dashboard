@@ -1,0 +1,486 @@
+//@version=6
+indicator("SMC Venice [Lite] v9  ·  Sin Miedo Capital",
+     overlay=true,
+     max_boxes_count=10,
+     max_lines_count=60,
+     max_labels_count=10,
+     max_bars_back=300)
+
+// ── Input Groups ─────────────────────────────────────────────────────────────
+grpHTF = "HTF Bias"
+htfTf     = input.timeframe("60", "HTF Timeframe",  group=grpHTF)
+htfEmaLen = input.int(50,         "HTF EMA Length", minval=1, maxval=200, group=grpHTF)
+
+grpVwap = "VWAP"
+showVwap   = input.bool(true, "Show VWAP Line", group=grpVwap)
+vwapFilter = input.bool(true, "VWAP as Filter", group=grpVwap)
+
+grpStruct = "Market Structure"
+structLen  = input.int(5, "Pivot Lookback", minval=2, maxval=20, group=grpStruct)
+
+grpOB = "Order Blocks"
+maxOBs     = input.int(4,     "Max Active OBs",               minval=1, maxval=10, group=grpOB)
+obUseWicks = input.bool(true, "Use Full Candle Range (Wicks)", group=grpOB,
+     tooltip="ON: OB zone extends to wick high/low. OFF: body only.")
+
+grpFvg = "Fair Value Gaps"
+fvgMinPct = input.float(0.03, "Min FVG Size (%)", minval=0.01, maxval=0.5,  step=0.01, group=grpFvg)
+fvgMaxPct = input.float(0.20, "Max FVG Size (%)", minval=0.05, maxval=2.0,  step=0.01, group=grpFvg)
+maxFvgs   = input.int(4,      "Max Active FVGs",  minval=1, maxval=20, group=grpFvg)
+
+grpSession = "Session Filter"
+useSession = input.bool(true,           "NY Session Filter",     group=grpSession,
+     tooltip="Only fires signals during high-volume NY windows. Blocks overnight noise.")
+sess1      = input.session("0930-1130", "Morning Window  (ET)",  group=grpSession)
+sess2      = input.session("1300-1430", "Afternoon Window (ET)", group=grpSession)
+
+grpRsi = "RSI Filter"
+useRsi = input.bool(true, "RSI Momentum Filter", group=grpRsi)
+rsiLen = input.int(14,    "RSI Length",          minval=2, maxval=50, group=grpRsi)
+
+grpVol = "Volume Filter"
+useVol = input.bool(true, "Volume Spike Filter", group=grpVol)
+volLen = input.int(20,    "Volume SMA Length",   minval=5, maxval=100, group=grpVol)
+
+grpLiq      = "Liquidity Sweep"
+useLiq      = input.bool(true, "Require Wick Rejection",  group=grpLiq)
+liqLookback = input.int(5,     "Sweep Lookback (bars)",   minval=1, maxval=15, group=grpLiq)
+
+grpCandle = "Candle Confirmation"
+useCandle = input.bool(true,  "Require Rejection Candle", group=grpCandle)
+wickMult  = input.float(1.5,  "Min Wick Ratio (x body)",  minval=1.0, maxval=4.0, step=0.5, group=grpCandle)
+
+grpNews   = "News Windows"
+blockNews = input.bool(false, "Block Signals During News", group=grpNews,
+     tooltip="Suppresses signals during defined news windows.")
+newsWin1  = input.session("0830-0900", "US Data Window (ET)",  group=grpNews,
+     tooltip="CPI, NFP, PPI, Retail Sales — all at 8:30 AM ET")
+newsWin2  = input.session("1030-1045", "EIA Oil Report (ET)",  group=grpNews,
+     tooltip="Weekly crude storage — key MCL mover, Wed 10:30 AM ET")
+newsWin3  = input.session("1400-1410", "FOMC/Fed Window (ET)", group=grpNews,
+     tooltip="Fed rate decisions and FOMC minutes")
+
+grpSig     = "Signals"
+cooldown   = input.int(3,     "Signal Cooldown (bars)",     minval=1, maxval=20, group=grpSig)
+showLevels = input.bool(true, "Show Entry / SL / TP Lines", group=grpSig)
+
+grpTP    = "Take Profit Levels"
+tp1Ratio = input.float(1.0, "TP1 R:R", minval=0.5, maxval=3.0, step=0.5, group=grpTP)
+tpRatio  = input.float(2.0, "TP2 R:R", minval=1.0, maxval=5.0, step=0.5, group=grpTP)
+
+grpAtr  = "ATR Stop Buffer"
+atrLen  = input.int(14,    "ATR Length",        minval=1, maxval=50,  group=grpAtr)
+atrMult = input.float(0.5, "SL Buffer (x ATR)", minval=0.0, maxval=3.0, step=0.1, group=grpAtr)
+
+// ── Colors ───────────────────────────────────────────────────────────────────
+colBull  = #00c076
+colBear  = #ff3b5c
+colVwap  = #b388ff
+colEntry = color.new(color.white, 30)
+colSL    = color.new(#ff3b5c, 15)
+colTP1   = color.new(#00c076, 40)
+colTP2   = color.new(#00c076, 10)
+
+// ── Core Calculations ────────────────────────────────────────────────────────
+atrVal = ta.atr(atrLen)
+
+[htfClose, htfEmaVal] = request.security(syminfo.tickerid, htfTf,
+     [close, ta.ema(close, htfEmaLen)], lookahead=barmerge.lookahead_off)
+htfBull = htfClose > htfEmaVal
+htfBear = htfClose < htfEmaVal
+
+vwapVal   = ta.vwap(hlc3)
+aboveVwap = close > vwapVal
+belowVwap = close < vwapVal
+
+// ── VWAP ─────────────────────────────────────────────────────────────────────
+plot(showVwap ? vwapVal : na, "VWAP", color=colVwap, linewidth=2)
+
+vwapLongOk  = vwapFilter ? aboveVwap : true
+vwapShortOk = vwapFilter ? belowVwap : true
+
+// ── Session Detection ─────────────────────────────────────────────────────────
+inSess1   = not na(time(timeframe.period, sess1, "America/New_York"))
+inSess2   = not na(time(timeframe.period, sess2, "America/New_York"))
+inSession = inSess1 or inSess2
+sessionOk = useSession ? inSession : true
+
+inNews1      = not na(time(timeframe.period, newsWin1, "America/New_York"))
+inNews2      = not na(time(timeframe.period, newsWin2, "America/New_York"))
+inNews3      = not na(time(timeframe.period, newsWin3, "America/New_York"))
+inNewsWindow = inNews1 or inNews2 or inNews3
+newsOk       = blockNews ? not inNewsWindow : true
+
+// ── RSI / Volume ─────────────────────────────────────────────────────────────
+rsiVal     = ta.rsi(close, rsiLen)
+rsiLongOk  = useRsi ? rsiVal > 50.0 : true
+rsiShortOk = useRsi ? rsiVal < 50.0 : true
+
+volSma   = ta.sma(volume, volLen)
+volSpike = volume > volSma
+volOk    = useVol ? volSpike : true
+
+// ── Market Structure Pivots ──────────────────────────────────────────────────
+pivHigh = ta.pivothigh(high, structLen, structLen)
+pivLow  = ta.pivotlow(low,  structLen, structLen)
+
+var float  swingHigh = na
+var float  swingLow  = na
+var string mktStr    = "neutral"
+
+if not na(pivHigh)
+    swingHigh := pivHigh
+if not na(pivLow)
+    swingLow := pivLow
+
+bosBull   = not na(swingHigh) and close > swingHigh and close[1] <= swingHigh and mktStr == "bullish"
+chochBull = not na(swingHigh) and close > swingHigh and close[1] <= swingHigh and (mktStr == "bearish" or mktStr == "neutral")
+bosBear   = not na(swingLow)  and close < swingLow  and close[1] >= swingLow  and mktStr == "bearish"
+chochBear = not na(swingLow)  and close < swingLow  and close[1] >= swingLow  and (mktStr == "bullish" or mktStr == "neutral")
+
+// ── Order Blocks ─────────────────────────────────────────────────────────────
+var float[] obTop     = array.new_float(0)
+var float[] obBot     = array.new_float(0)
+var bool[]  obBull    = array.new_bool(0)
+var bool[]  obBreaker = array.new_bool(0)
+
+obScanLen = 30
+
+if chochBull or bosBull
+    sz = array.size(obTop)
+    if sz > 0
+        for i = sz - 1 to 0
+            _bull = array.get(obBull,    i)
+            _brk  = array.get(obBreaker, i)
+            if _bull == _brk
+                array.remove(obTop,     i)
+                array.remove(obBot,     i)
+                array.remove(obBull,    i)
+                array.remove(obBreaker, i)
+    mktStr    := "bullish"
+    swingHigh := na
+    for k = 1 to obScanLen
+        if close[k] < open[k]
+            obH = obUseWicks ? high[k]  : math.max(open[k], close[k])
+            obL = obUseWicks ? low[k]   : math.min(open[k], close[k])
+            array.unshift(obTop,     obH)
+            array.unshift(obBot,     obL)
+            array.unshift(obBull,    true)
+            array.unshift(obBreaker, false)
+            if array.size(obTop) > maxOBs
+                array.pop(obTop)
+                array.pop(obBot)
+                array.pop(obBull)
+                array.pop(obBreaker)
+            break
+
+if chochBear or bosBear
+    sz = array.size(obTop)
+    if sz > 0
+        for i = sz - 1 to 0
+            _bull = array.get(obBull,    i)
+            _brk  = array.get(obBreaker, i)
+            if _bull != _brk
+                array.remove(obTop,     i)
+                array.remove(obBot,     i)
+                array.remove(obBull,    i)
+                array.remove(obBreaker, i)
+    mktStr   := "bearish"
+    swingLow := na
+    for k = 1 to obScanLen
+        if close[k] > open[k]
+            obH = obUseWicks ? high[k]  : math.max(open[k], close[k])
+            obL = obUseWicks ? low[k]   : math.min(open[k], close[k])
+            array.unshift(obTop,     obH)
+            array.unshift(obBot,     obL)
+            array.unshift(obBull,    false)
+            array.unshift(obBreaker, false)
+            if array.size(obTop) > maxOBs
+                array.pop(obTop)
+                array.pop(obBot)
+                array.pop(obBull)
+                array.pop(obBreaker)
+            break
+
+// ── Liquidity Sweep ───────────────────────────────────────────────────────────
+bullLiqSweep = false
+bearLiqSweep = false
+if useLiq and not na(swingLow)
+    for j = 1 to liqLookback
+        if low[j] < swingLow and close[j] > swingLow
+            bullLiqSweep := true
+            break
+if useLiq and not na(swingHigh)
+    for j = 1 to liqLookback
+        if high[j] > swingHigh and close[j] < swingHigh
+            bearLiqSweep := true
+            break
+liqLongOk  = useLiq ? bullLiqSweep : true
+liqShortOk = useLiq ? bearLiqSweep : true
+
+// ── OB Zone Check ─────────────────────────────────────────────────────────────
+inBullOB    = false
+inBearOB    = false
+bullOBSlRef = float(na)
+bearOBSlRef = float(na)
+
+nOB = array.size(obTop)
+if nOB > 0
+    for i = nOB - 1 to 0
+        topV      = array.get(obTop,     i)
+        botV      = array.get(obBot,     i)
+        isBull    = array.get(obBull,    i)
+        isBreaker = array.get(obBreaker, i)
+
+        if not isBreaker
+            if isBull and close < botV
+                array.set(obBreaker, i, true)
+            else if not isBull and close > topV
+                array.set(obBreaker, i, true)
+            else if close >= botV and close <= topV
+                if isBull
+                    inBullOB    := true
+                    bullOBSlRef := botV
+                else
+                    inBearOB    := true
+                    bearOBSlRef := topV
+        else
+            isCurrBull = isBull != isBreaker
+            if isCurrBull
+                if close < botV
+                    array.remove(obTop,     i)
+                    array.remove(obBot,     i)
+                    array.remove(obBull,    i)
+                    array.remove(obBreaker, i)
+                else if close >= botV and close <= topV
+                    inBullOB    := true
+                    bullOBSlRef := botV
+            else
+                if close > topV
+                    array.remove(obTop,     i)
+                    array.remove(obBot,     i)
+                    array.remove(obBull,    i)
+                    array.remove(obBreaker, i)
+                else if close >= botV and close <= topV
+                    inBearOB    := true
+                    bearOBSlRef := topV
+
+// ── Fair Value Gaps ───────────────────────────────────────────────────────────
+var float[] fvgTop  = array.new_float(0)
+var float[] fvgBot  = array.new_float(0)
+var bool[]  fvgBull = array.new_bool(0)
+
+minSz = fvgMinPct / 100.0
+maxSz = fvgMaxPct / 100.0
+bullGap    = low    - high[2]
+bearGap    = low[2] - high
+newBullFvg = low > high[2] and (bullGap / close) >= minSz and (bullGap / close) <= maxSz
+newBearFvg = high < low[2] and (bearGap / close) >= minSz and (bearGap / close) <= maxSz
+
+if newBullFvg
+    array.unshift(fvgTop,  low)
+    array.unshift(fvgBot,  high[2])
+    array.unshift(fvgBull, true)
+    if array.size(fvgTop) > maxFvgs
+        array.pop(fvgTop)
+        array.pop(fvgBot)
+        array.pop(fvgBull)
+
+if newBearFvg
+    array.unshift(fvgTop,  low[2])
+    array.unshift(fvgBot,  high)
+    array.unshift(fvgBull, false)
+    if array.size(fvgTop) > maxFvgs
+        array.pop(fvgTop)
+        array.pop(fvgBot)
+        array.pop(fvgBull)
+
+// ── FVG Zone Check ────────────────────────────────────────────────────────────
+inBullFvg    = false
+inBearFvg    = false
+bullFvgSlRef = float(na)
+bearFvgSlRef = float(na)
+
+nFvg = array.size(fvgTop)
+if nFvg > 0
+    for i = nFvg - 1 to 0
+        topV   = array.get(fvgTop,  i)
+        botV   = array.get(fvgBot,  i)
+        isBull = array.get(fvgBull, i)
+        if isBull and close < botV
+            array.remove(fvgTop,  i)
+            array.remove(fvgBot,  i)
+            array.remove(fvgBull, i)
+        else if not isBull and close > topV
+            array.remove(fvgTop,  i)
+            array.remove(fvgBot,  i)
+            array.remove(fvgBull, i)
+        else if close >= botV and close <= topV
+            if isBull
+                inBullFvg    := true
+                bullFvgSlRef := botV
+            else
+                inBearFvg    := true
+                bearFvgSlRef := topV
+
+// ── Signal Conditions ────────────────────────────────────────────────────────
+inBullZone  = inBullFvg or inBullOB
+inBearZone  = inBearFvg or inBearOB
+rawBullSl   = not na(bullOBSlRef) ? bullOBSlRef : bullFvgSlRef
+rawBearSl   = not na(bearOBSlRef) ? bearOBSlRef : bearFvgSlRef
+bullSlFinal = rawBullSl - atrVal * atrMult
+bearSlFinal = rawBearSl + atrVal * atrMult
+
+bodySize  = math.abs(close - open)
+upperWick = high - math.max(close, open)
+lowerWick = math.min(close, open) - low
+
+hammer     = close > open and bodySize > 0 and
+             lowerWick >= bodySize * wickMult and upperWick <= bodySize * 0.6
+bullEngulf = close > open and open[1] > close[1] and close > open[1] and open < close[1]
+shootStar  = close < open and bodySize > 0 and
+             upperWick >= bodySize * wickMult and lowerWick <= bodySize * 0.6
+bearEngulf = close < open and close[1] > open[1] and close < open[1] and open > close[1]
+
+candleLongOk  = useCandle ? (hammer or bullEngulf) : true
+candleShortOk = useCandle ? (shootStar or bearEngulf) : true
+
+buyRaw  = inBullZone and htfBull and mktStr == "bullish" and
+          vwapLongOk  and rsiLongOk  and sessionOk and volOk and
+          liqLongOk   and candleLongOk  and newsOk
+sellRaw = inBearZone and htfBear and mktStr == "bearish" and
+          vwapShortOk and rsiShortOk and sessionOk and volOk and
+          liqShortOk  and candleShortOk and newsOk
+
+var int lastSig = -999
+validBuy  = buyRaw  and (bar_index - lastSig > cooldown)
+validSell = sellRaw and (bar_index - lastSig > cooldown)
+if (validBuy or validSell) and barstate.isconfirmed
+    lastSig := bar_index
+
+// ── TP1 Tracking ─────────────────────────────────────────────────────────────
+var float tp1Track  = na
+var bool  tp1Long   = false
+var bool  tp1Short  = false
+var bool  tp1Fired  = false
+var int   tp1SetBar = -999
+
+if validBuy and not na(bullSlFinal)
+    _r        = close - bullSlFinal
+    tp1Track  := close + _r * tp1Ratio
+    tp1Long   := true
+    tp1Short  := false
+    tp1Fired  := false
+    tp1SetBar := bar_index
+
+if validSell and not na(bearSlFinal)
+    _r        = bearSlFinal - close
+    tp1Track  := close - _r * tp1Ratio
+    tp1Long   := false
+    tp1Short  := true
+    tp1Fired  := false
+    tp1SetBar := bar_index
+
+tp1Hit = false
+if not na(tp1Track) and not tp1Fired and bar_index > tp1SetBar
+    if tp1Long and high >= tp1Track
+        tp1Hit   := true
+        tp1Fired := true
+        tp1Long  := false
+    if tp1Short and low <= tp1Track
+        tp1Hit   := true
+        tp1Fired := true
+        tp1Short := false
+
+// ── SL Tracking ──────────────────────────────────────────────────────────────
+var float slTrack  = na
+var bool  slLong   = false
+var bool  slShort  = false
+var bool  slFired  = false
+var int   slSetBar = -999
+
+if validBuy and not na(bullSlFinal)
+    slTrack  := bullSlFinal
+    slLong   := true
+    slShort  := false
+    slFired  := false
+    slSetBar := bar_index
+
+if validSell and not na(bearSlFinal)
+    slTrack  := bearSlFinal
+    slLong   := false
+    slShort  := true
+    slFired  := false
+    slSetBar := bar_index
+
+slBreach = false
+if not na(slTrack) and not slFired and bar_index > slSetBar
+    if slLong  and close < slTrack
+        slBreach := true
+        slFired  := true
+        slLong   := false
+    if slShort and close > slTrack
+        slBreach := true
+        slFired  := true
+        slShort  := false
+
+// ── Signal Plots ──────────────────────────────────────────────────────────────
+bgcolor(validBuy  ? color.new(colBull, 90) : na, title="Long Bar BG")
+bgcolor(validSell ? color.new(colBear, 90) : na, title="Short Bar BG")
+
+plotshape(validBuy,  "LONG Signal",  shape.triangleup,   location.belowbar,
+     color=colBull, size=size.large, text="LONG",  textcolor=color.white)
+plotshape(validSell, "SHORT Signal", shape.triangledown, location.abovebar,
+     color=colBear, size=size.large, text="SHORT", textcolor=color.white)
+plotshape(tp1Hit,   "TP1 Hit",   shape.circle, location.abovebar,
+     color=color.new(#ffd700, 10), size=size.small)
+plotshape(slBreach, "SL Breach", shape.xcross, location.abovebar,
+     color=color.new(#ff3b5c, 0),  size=size.small)
+
+// ── Entry / SL / TP Level Lines ───────────────────────────────────────────────
+levelLen    = 30
+maxLevelSet = 6
+var line[] entryLines = array.new<line>(0)
+var line[] slLines    = array.new<line>(0)
+var line[] tp1Lines   = array.new<line>(0)
+var line[] tp2Lines   = array.new<line>(0)
+
+if showLevels
+    if validBuy and not na(bullSlFinal)
+        entryPx = close
+        slPx    = bullSlFinal
+        risk    = entryPx - slPx
+        tp1Px   = entryPx + risk * tp1Ratio
+        tp2Px   = entryPx + risk * tpRatio
+        array.push(entryLines, line.new(bar_index, entryPx, bar_index + levelLen, entryPx,
+             color=colEntry, width=1, style=line.style_dashed))
+        array.push(slLines,    line.new(bar_index, slPx,    bar_index + levelLen, slPx,
+             color=colSL,    width=2, style=line.style_solid))
+        array.push(tp1Lines,   line.new(bar_index, tp1Px,   bar_index + levelLen, tp1Px,
+             color=colTP1,   width=1, style=line.style_dashed))
+        array.push(tp2Lines,   line.new(bar_index, tp2Px,   bar_index + levelLen, tp2Px,
+             color=colTP2,   width=2, style=line.style_solid))
+        if array.size(entryLines) > maxLevelSet
+            line.delete(array.shift(entryLines))
+            line.delete(array.shift(slLines))
+            line.delete(array.shift(tp1Lines))
+            line.delete(array.shift(tp2Lines))
+    if validSell and not na(bearSlFinal)
+        entryPx = close
+        slPx    = bearSlFinal
+        risk    = slPx - entryPx
+        tp1Px   = entryPx - risk * tp1Ratio
+        tp2Px   = entryPx - risk * tpRatio
+        array.push(entryLines, line.new(bar_index, entryPx, bar_index + levelLen, entryPx,
+             color=colEntry, width=1, style=line.style_dashed))
+        array.push(slLines,    line.new(bar_index, slPx,    bar_index + levelLen, slPx,
+             color=colSL,    width=2, style=line.style_solid))
+        array.push(tp1Lines,   line.new(bar_index, tp1Px,   bar_index + levelLen, tp1Px,
+             color=colTP1,   width=1, style=line.style_dashed))
+        array.push(tp2Lines,   line.new(bar_index, tp2Px,   bar_index + levelLen, tp2Px,
+             color=colTP2,   width=2, style=line.style_solid))
+        if array.size(entryLines) > maxLevelSet
+            line.delete(array.shift(entryLines))
+            line.delete(array.shift(slLines))
+            line.delete(array.shift(tp1Lines))
+            line.delete(array.shift(tp2Lines))
