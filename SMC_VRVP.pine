@@ -33,8 +33,8 @@ i_hvnCount  = input.int(3,     "Max HVNs Shown",            minval=1,   maxval=1
 i_showHistogram = input.bool(true, "Show Histogram",                group="Display")
 i_showLines     = input.bool(true, "Show Key Level Lines",        group="Display")
 i_histBars      = input.int(40,   "Histogram Width (bars)",      minval=5,  maxval=200, group="Display")
-i_histPad       = input.int(0,    "Histogram Left Pad (bars)",   minval=0,  maxval=50,  group="Display",
-                     tooltip="Gap between the current bar and the histogram's left edge. 0 = flush with last candle.")
+i_histPad       = input.int(0,    "Histogram Right Pad (bars)",  minval=0,  maxval=50,  group="Display",
+                     tooltip="Shifts the histogram left of the current bar. 0 = right edge flush with last candle.")
 i_lineWidth     = input.int(1,    "Line Width",                   minval=1,  maxval=4,   group="Display")
 i_extLeft       = input.bool(true, "Extend Lines Left",           group="Display")
 
@@ -43,8 +43,8 @@ i_colHVNSup = input.color(color.new(#1B5E20, 0),  "HVN Support",   group="Colors
 i_colHVNRes = input.color(color.new(#B71C1C, 0),  "HVN Resistance",group="Colors")
 i_colVAHL   = input.color(color.new(#9E9E9E, 0),  "VAH / VAL",     group="Colors")
 i_colLVN    = input.color(color.new(#E65100, 0),  "LVN",           group="Colors")
-i_colBuy    = input.color(color.new(#FFFFFF, 70), "Buy Volume",     group="Colors")
-i_colSell   = input.color(color.new(#1565C0, 70), "Sell Volume",    group="Colors")
+i_colBuy    = input.color(color.new(#FFFFFF, 82), "Buy Volume",     group="Colors")
+i_colSell   = input.color(color.new(#1565C0, 82), "Sell Volume",    group="Colors")
 
 i_showPOC     = input.bool(true,  "POC Line",            group="Toggles")
 i_showVAHL    = input.bool(true,  "VAH / VAL Lines",     group="Toggles")
@@ -373,8 +373,8 @@ if barstate.islast and not na(f_poc)
 
     cb        = bar_index
     extMode   = i_extLeft ? extend.left : extend.none
-    histLeft  = cb + 1 + i_histPad
-    labelX    = histLeft + i_histBars + 1
+    histRight = cb - i_histPad
+    labelX    = histRight + 1
 
     f_zoneStateLive := calcZoneState(close, f_poc, f_vah, f_val, f_rowSize, f_hvns, f_lvns)
 
@@ -396,23 +396,23 @@ if barstate.islast and not na(f_poc)
                 rowBot = rp - f_rowSize / 2
                 rowTop = rp + f_rowSize / 2
 
-                // Sell bar (full width, dark blue) — extends RIGHT from histLeft
+                // Sell bar (full width, dark blue) — extends LEFT from histRight
                 bxSell = box.new(
-                     left         = histLeft,
+                     left         = histRight - fullW,
                      top          = rowTop,
-                     right        = histLeft + fullW,
+                     right        = histRight,
                      bottom       = rowBot,
                      bgcolor      = i_colSell,
                      border_color = color.new(color.white, 100),
                      border_width = 0)
                 array.push(g_boxes, bxSell)
 
-                // Buy overlay (white, proportional) — anchored to LEFT edge
+                // Buy overlay (white, proportional) — anchored to RIGHT edge
                 if buyW > 0
                     bxBuy = box.new(
-                         left         = histLeft,
+                         left         = histRight - buyW,
                          top          = rowTop,
-                         right        = histLeft + buyW,
+                         right        = histRight,
                          bottom       = rowBot,
                          bgcolor      = i_colBuy,
                          border_color = color.new(color.white, 100),
@@ -425,7 +425,7 @@ if barstate.islast and not na(f_poc)
             bxVA = box.new(
                  left         = fillLeft,
                  top          = f_vah,
-                 right        = histLeft + i_histBars,
+                 right        = histRight,
                  bottom       = f_val,
                  bgcolor      = color.new(i_colVAHL, 92),
                  border_color = color.new(color.white, 100),
