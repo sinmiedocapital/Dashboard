@@ -30,13 +30,16 @@ i_hvnThresh = input.float(70.0, "HVN Threshold % of POC",  minval=10,  maxval=10
 i_lvnThresh = input.float(25.0, "LVN Threshold % of POC",  minval=1,   maxval=50,  group="Profile Settings")
 i_hvnCount  = input.int(3,     "Max HVNs Shown",            minval=1,   maxval=10,  group="Profile Settings")
 
-i_showHistogram = input.bool(true, "Show Histogram",                group="Display")
-i_showLines     = input.bool(true, "Show Key Level Lines",        group="Display")
-i_histBars      = input.int(40,   "Histogram Width (bars)",      minval=5,  maxval=200, group="Display")
-i_histPad       = input.int(0,    "Histogram Right Pad (bars)",  minval=0,  maxval=50,  group="Display",
-                     tooltip="Shifts the histogram left of the current bar. 0 = right edge flush with last candle.")
-i_lineWidth     = input.int(1,    "Line Width",                   minval=1,  maxval=4,   group="Display")
-i_extLeft       = input.bool(true, "Extend Lines Left",           group="Display")
+i_showHistogram = input.bool(true, "Show Histogram",               group="Display")
+i_showLines     = input.bool(true, "Show Key Level Lines",         group="Display")
+i_position      = input.string("Overlay", "Histogram Position",
+                     options=["Overlay", "Right Side"],            group="Display",
+                     tooltip="Overlay: histogram sits over the price range it covers. Right Side: floats in blank space to the right of the last candle.")
+i_histBars      = input.int(40,   "Histogram Width (bars)",       minval=5,  maxval=200, group="Display")
+i_histPad       = input.int(0,    "Histogram Pad (bars)",         minval=0,  maxval=50,  group="Display",
+                     tooltip="Distance from the current bar. Overlay = shifts left edge. Right Side = adds gap before histogram starts.")
+i_lineWidth     = input.int(1,    "Line Width",                    minval=1,  maxval=4,   group="Display")
+i_extLeft       = input.bool(true, "Extend Lines Left",            group="Display")
 
 i_colPOC    = input.color(color.new(#7B1FA2, 0),  "POC",           group="Colors")
 i_colHVNSup = input.color(color.new(#1B5E20, 0),  "HVN Support",   group="Colors")
@@ -371,10 +374,11 @@ if barstate.isconfirmed and not i_lock
 if barstate.islast and not na(f_poc)
     clearDrawings()
 
-    cb        = bar_index
-    extMode   = i_extLeft ? extend.left : extend.none
-    histRight = cb - i_histPad
-    labelX    = histRight + 1
+    cb         = bar_index
+    extMode    = i_extLeft ? extend.left : extend.none
+    isOverlay  = i_position == "Overlay"
+    histAnchor = isOverlay ? cb - i_histPad : cb + 1 + i_histPad
+    labelX     = isOverlay ? histAnchor + 1 : histAnchor + i_histBars + 1
 
     f_zoneStateLive := calcZoneState(close, f_poc, f_vah, f_val, f_rowSize, f_hvns, f_lvns)
 
@@ -396,23 +400,25 @@ if barstate.islast and not na(f_poc)
                 rowBot = rp - f_rowSize / 2
                 rowTop = rp + f_rowSize / 2
 
-                // Sell bar (full width, dark blue) — extends LEFT from histRight
+                sellL = isOverlay ? histAnchor - fullW : histAnchor
+                sellR = isOverlay ? histAnchor        : histAnchor + fullW
                 bxSell = box.new(
-                     left         = histRight - fullW,
+                     left         = sellL,
                      top          = rowTop,
-                     right        = histRight,
+                     right        = sellR,
                      bottom       = rowBot,
                      bgcolor      = i_colSell,
                      border_color = color.new(color.white, 100),
                      border_width = 0)
                 array.push(g_boxes, bxSell)
 
-                // Buy overlay (white, proportional) — anchored to RIGHT edge
                 if buyW > 0
+                    buyL = isOverlay ? histAnchor - buyW : histAnchor
+                    buyR = isOverlay ? histAnchor        : histAnchor + buyW
                     bxBuy = box.new(
-                         left         = histRight - buyW,
+                         left         = buyL,
                          top          = rowTop,
-                         right        = histRight,
+                         right        = buyR,
                          bottom       = rowBot,
                          bgcolor      = i_colBuy,
                          border_color = color.new(color.white, 100),
@@ -422,10 +428,11 @@ if barstate.islast and not na(f_poc)
         // Value Area fill
         if i_showVAFill
             fillLeft = math.max(0, cb - 5000)
+            vaRight  = isOverlay ? histAnchor : histAnchor + i_histBars
             bxVA = box.new(
                  left         = fillLeft,
                  top          = f_vah,
-                 right        = histRight,
+                 right        = vaRight,
                  bottom       = f_val,
                  bgcolor      = color.new(i_colVAHL, 92),
                  border_color = color.new(color.white, 100),
