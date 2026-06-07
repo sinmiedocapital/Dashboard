@@ -61,6 +61,10 @@ grpCandle = "Candle Confirmation"
 useCandle = input.bool(true,  "Require Rejection Candle",    group=grpCandle)
 wickMult  = input.float(1.5,  "Min Wick Ratio (x body)",     minval=1.0, maxval=4.0, step=0.5, group=grpCandle)
 
+grpChannel  = "Pivot Channel"
+showChannel = input.bool(true, "Show Pivot Channel", group=grpChannel,
+     tooltip="Dotted lines connecting swing highs (blue) and swing lows (red). Projects trend direction forward. Auto-adjusts to any timeframe.")
+
 grpNews     = "News Windows"
 showNewsWin = input.bool(true,  "Highlight News Windows",   group=grpNews,
      tooltip="Yellow background on bars within a scheduled high-impact event window.")
@@ -273,13 +277,41 @@ var float  swingLow     = na
 var int    swingHighBar = na
 var int    swingLowBar  = na
 var string mktStr       = "neutral"
+var float  chHi1  = na
+var int    chHiB1 = na
+var float  chHi2  = na
+var int    chHiB2 = na
+var float  chLo1  = na
+var int    chLoB1 = na
+var float  chLo2  = na
+var int    chLoB2 = na
 
 if not na(pivHigh)
     swingHigh    := pivHigh
     swingHighBar := bar_index[structLen]
+    chHi2  := chHi1
+    chHiB2 := chHiB1
+    chHi1  := pivHigh
+    chHiB1 := bar_index[structLen]
 if not na(pivLow)
     swingLow    := pivLow
     swingLowBar := bar_index[structLen]
+    chLo2  := chLo1
+    chLoB2 := chLoB1
+    chLo1  := pivLow
+    chLoB1 := bar_index[structLen]
+
+hiSlope = (not na(chHi1) and not na(chHi2) and chHiB1 != chHiB2) ?
+     (chHi1 - chHi2) / float(chHiB1 - chHiB2) : float(na)
+upperCh = not na(hiSlope) ? chHi1 + hiSlope * float(bar_index - chHiB1) : float(na)
+loSlope = (not na(chLo1) and not na(chLo2) and chLoB1 != chLoB2) ?
+     (chLo1 - chLo2) / float(chLoB1 - chLoB2) : float(na)
+lowerCh = not na(loSlope) ? chLo1 + loSlope * float(bar_index - chLoB1) : float(na)
+
+plot(showChannel ? upperCh : na, "Upper Channel",
+     color=color.new(#4fc3f7, 35), linewidth=1, style=plot.style_circles)
+plot(showChannel ? lowerCh : na, "Lower Channel",
+     color=color.new(#ff6b6b, 35), linewidth=1, style=plot.style_circles)
 
 bosBull   = not na(swingHigh) and close > swingHigh and close[1] <= swingHigh and mktStr == "bullish"
 chochBull = not na(swingHigh) and close > swingHigh and close[1] <= swingHigh and (mktStr == "bearish" or mktStr == "neutral")
