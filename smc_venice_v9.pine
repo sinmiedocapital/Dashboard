@@ -348,11 +348,18 @@ if not na(pivLow)
     swingLow    := pivLow
     swingLowBar := bar_index[structLen]
 
-chLen = math.max(10, structLen * 6)
-plot(showChannel ? ta.linreg(high, chLen, 0) : na, "Upper Channel",
+chLen   = math.max(10, structLen * 6)
+upperCh = ta.linreg(high, chLen, 0) + atrVal * 0.3
+lowerCh = ta.linreg(low,  chLen, 0) - atrVal * 0.3
+plot(showChannel ? upperCh : na, "Upper Channel",
      color=color.new(#4fc3f7, 10), linewidth=2)
-plot(showChannel ? ta.linreg(low, chLen, 0) : na, "Lower Channel",
+plot(showChannel ? lowerCh : na, "Lower Channel",
      color=color.new(#ff6b6b, 10), linewidth=2)
+
+chBreakBull  = showChannel and ta.crossover(close,  upperCh)
+chBreakBear  = showChannel and ta.crossunder(close, lowerCh)
+chAboveUpper = showChannel and close > upperCh
+chBelowLower = showChannel and close < lowerCh
 
 bosBull   = not na(swingHigh) and close > swingHigh and close[1] <= swingHigh and mktStr == "bullish"
 chochBull = not na(swingHigh) and close > swingHigh and close[1] <= swingHigh and (mktStr == "bearish" or mktStr == "neutral")
@@ -867,6 +874,10 @@ plotshape(tp1Hit,    "TP1 Hit",      shape.circle,       location.abovebar,
      color=color.new(#ffd700, 10), size=size.small)
 plotshape(slBreach,  "SL Breach",    shape.xcross,       location.abovebar,
      color=color.new(#ff3b5c, 0),  size=size.small)
+plotshape(chBreakBull, "Ch Break Up",   shape.circle, location.abovebar,
+     color=color.new(#4fc3f7, 0), size=size.tiny)
+plotshape(chBreakBear, "Ch Break Down", shape.circle, location.belowbar,
+     color=color.new(#ff6b6b, 0), size=size.tiny)
 
 // ── Entry / SL / TP Level Lines ───────────────────────────────────────────────
 levelLen    = 30
@@ -1134,7 +1145,7 @@ if showCorr and barstate.islast
              text_color=biasC, text_size=size.tiny, bgcolor=rowBg)
 
 // ── Info Panel (top-right) ────────────────────────────────────────────────────
-var table panel = table.new(position.top_right, 2, 9,
+var table panel = table.new(position.top_right, 2, 10,
      bgcolor      = color.new(#0d0d0d, 55),
      border_color = color.new(color.gray, 60),
      border_width = 1,
@@ -1233,6 +1244,15 @@ if showBias and barstate.islast
          text_color=color.new(color.white, 35), text_size=size.tiny, bgcolor=newsBg)
     table.cell(panel, 1, 8, newsTxt,
          text_color=newsCol, text_size=size.tiny, bgcolor=newsBg)
+
+    // Row 9: Channel
+    chStatus = chAboveUpper ? "Break ↑" : chBelowLower ? "Break ↓" : "In Channel"
+    chBg     = chAboveUpper ? color.new(#4fc3f7, 50) : chBelowLower ? color.new(#ff6b6b, 50) : color.new(color.gray, 80)
+    chTxt    = (chAboveUpper or chBelowLower) ? color.white : color.new(color.gray, 20)
+    table.cell(panel, 0, 9, "Channel",
+         text_color=color.new(color.white, 35), text_size=size.tiny, bgcolor=color.new(#0d0d0d, 55))
+    table.cell(panel, 1, 9, chStatus,
+         text_color=chTxt, text_size=size.tiny, bgcolor=chBg)
 
 // ── Trade Log + Win Rate Table (bottom-right) ─────────────────────────────────
 // 3 cols × 5 rows: header | 3 trades | win rate (merged)
