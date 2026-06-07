@@ -96,9 +96,6 @@ export default function HomePage() {
           <span className="text-slate-500 text-sm ml-2">· Trading Without Fear</span>
         </div>
         <div className="flex items-center gap-3">
-          <Link href="/tutorial" className="text-sm text-slate-400 hover:text-slate-200 transition-colors">
-            Dev Guide
-          </Link>
           <Link
             href="/signals"
             className="text-sm px-4 py-2 rounded-lg font-semibold text-white transition-opacity hover:opacity-80"
@@ -118,8 +115,8 @@ export default function HomePage() {
           Institutional SMC Confluence<br />for MES &amp; MCL Futures
         </h1>
         <p className="text-slate-400 text-lg mb-8 max-w-xl mx-auto">
-          Nine confluences. One signal. The system that consistently generates
-          $1,200–$1,800 per session on funded prop accounts — now available to the Sin Miedo Capital community.
+          Nine confluences. One signal. No noise, no guessing — only high-conviction
+          setups aligned to institutional market structure, built for funded prop accounts.
         </p>
         <div className="flex items-center justify-center gap-4 flex-wrap">
           <Link

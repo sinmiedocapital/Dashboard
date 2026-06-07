@@ -4,6 +4,8 @@ import SignalCard from '@/components/SignalCard'
 import WinRateBar from '@/components/WinRateBar'
 import StatusBar from '@/components/StatusBar'
 import LoginForm from '@/components/LoginForm'
+import AutoRefresh from '@/components/AutoRefresh'
+import LogoutButton from '@/components/LogoutButton'
 import type { Signal } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
@@ -25,6 +27,7 @@ export default async function SignalsPage() {
 
   return (
     <div className="min-h-screen px-4 py-8" style={{ backgroundColor: '#0d1117' }}>
+      <AutoRefresh intervalMs={30000} />
       <div className="max-w-2xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
@@ -32,12 +35,15 @@ export default async function SignalsPage() {
             <h1 className="text-xl font-bold text-white">Signal Dashboard</h1>
             <p className="text-sm text-slate-400">SMC Venice v9 · Sin Miedo Capital</p>
           </div>
-          <a
-            href="/"
-            className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
-          >
-            ← Back to home
-          </a>
+          <div className="flex items-center gap-4">
+            <a
+              href="/"
+              className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+            >
+              ← Back to home
+            </a>
+            <LogoutButton />
+          </div>
         </div>
 
         {/* Traffic light */}

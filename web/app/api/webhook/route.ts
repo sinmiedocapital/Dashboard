@@ -36,12 +36,11 @@ export async function POST(req: NextRequest) {
 
   if (action === 'tp1' || action === 'sl_hit') {
     const result = action === 'tp1' ? 'Win TP1' : 'Loss SL'
-    const direction = action === 'tp1' ? ['buy', 'sell'] : ['buy', 'sell']
     const { data: open } = await db
       .from('signals')
       .select('id')
       .eq('symbol', symbol)
-      .in('action', direction)
+      .in('action', ['buy', 'sell'])
       .is('result', null)
       .order('created_at', { ascending: false })
       .limit(1)
