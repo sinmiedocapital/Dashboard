@@ -277,51 +277,18 @@ var float  swingLow     = na
 var int    swingHighBar = na
 var int    swingLowBar  = na
 var string mktStr       = "neutral"
-var float  chHi1  = na
-var int    chHiB1 = na
-var float  chHi2  = na
-var int    chHiB2 = na
-var float  chLo1  = na
-var int    chLoB1 = na
-var float  chLo2  = na
-var int    chLoB2 = na
-var line   chUpperLine = na
-var line   chLowerLine = na
-
 if not na(pivHigh)
     swingHigh    := pivHigh
     swingHighBar := bar_index[structLen]
-    chHi2  := chHi1
-    chHiB2 := chHiB1
-    chHi1  := pivHigh
-    chHiB1 := bar_index[structLen]
-    if not na(chHi2) and chHiB1 != chHiB2
-        if not na(chUpperLine)
-            line.delete(chUpperLine)
-        chUpperLine := showChannel ? line.new(chHiB2, chHi2, chHiB1, chHi1,
-             color=color.new(#4fc3f7, 35), width=1,
-             style=line.style_dotted, extend=extend.right) : na
 if not na(pivLow)
     swingLow    := pivLow
     swingLowBar := bar_index[structLen]
-    chLo2  := chLo1
-    chLoB2 := chLoB1
-    chLo1  := pivLow
-    chLoB1 := bar_index[structLen]
-    if not na(chLo2) and chLoB1 != chLoB2
-        if not na(chLowerLine)
-            line.delete(chLowerLine)
-        chLowerLine := showChannel ? line.new(chLoB2, chLo2, chLoB1, chLo1,
-             color=color.new(#ff6b6b, 35), width=1,
-             style=line.style_dotted, extend=extend.right) : na
 
-if not showChannel
-    if not na(chUpperLine)
-        line.delete(chUpperLine)
-        chUpperLine := na
-    if not na(chLowerLine)
-        line.delete(chLowerLine)
-        chLowerLine := na
+chLen = math.max(10, structLen * 6)
+plot(showChannel ? ta.linreg(high, chLen, 0) : na, "Upper Channel",
+     color=color.new(#4fc3f7, 10), linewidth=2)
+plot(showChannel ? ta.linreg(low, chLen, 0) : na, "Lower Channel",
+     color=color.new(#ff6b6b, 10), linewidth=2)
 
 bosBull   = not na(swingHigh) and close > swingHigh and close[1] <= swingHigh and mktStr == "bullish"
 chochBull = not na(swingHigh) and close > swingHigh and close[1] <= swingHigh and (mktStr == "bearish" or mktStr == "neutral")
