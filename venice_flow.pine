@@ -35,6 +35,12 @@ useSession = input.bool(true,             "NY Session Filter",      group=grpSes
 sess1      = input.session("0930-1130",   "Morning Window (ET)",    group=grpSess)
 sess2      = input.session("1300-1430",   "Afternoon Window (ET)",  group=grpSess)
 
+grpNews     = "News Windows"
+blockNews   = input.bool(false, "Block Signals During News", group=grpNews,
+     tooltip="Suppresses signals during high-impact event windows. Recommended ON for MCL. Off by default for MES/MNQ.")
+showNewsWin = input.bool(false, "Highlight News Bars",       group=grpNews,
+     tooltip="Yellow background on bars inside a scheduled news window.")
+
 grpSig     = "Signals"
 cooldown   = input.int(3,     "Signal Cooldown (bars)",      minval=1, maxval=20, group=grpSig)
 showLevels = input.bool(true, "Show Entry / SL / TP Lines",  group=grpSig)
@@ -57,6 +63,7 @@ colSL    = color.new(#ff3b5c, 15)
 colTP1   = color.new(#00c076, 40)
 colTP2   = color.new(#00c076, 10)
 colVwap  = #b388ff
+colNews  = color.new(#ffd700, 92)
 
 // ════════════════════════════════════════════════════════════════════════════
 //  CORE CALCULATIONS
@@ -92,6 +99,14 @@ inSess1   = not na(time(timeframe.period, sess1, "America/New_York"))
 inSess2   = not na(time(timeframe.period, sess2, "America/New_York"))
 sessionOk = useSession ? (inSess1 or inSess2) : true
 
+// ── News Windows (US Data 8:30 · EIA Oil 10:30 Wed · Fed/FOMC 14:00) ────────
+inNews1      = not na(time(timeframe.period, "0830-0900", "America/New_York"))
+inNews2      = not na(time(timeframe.period, "1030-1045", "America/New_York"))
+inNews3      = not na(time(timeframe.period, "1400-1410", "America/New_York"))
+inNewsWindow = inNews1 or inNews2 or inNews3
+newsOk       = blockNews ? not inNewsWindow : true
+bgcolor(showNewsWin and inNewsWindow ? colNews : na, title="News Window")
+
 // ── Candle Patterns ──────────────────────────────────────────────────────────
 bodySize  = math.abs(close - open)
 upperWick = high - math.max(close, open)
@@ -112,10 +127,10 @@ vwapLongOk  = vwapFilter ? aboveVwap : true
 vwapShortOk = vwapFilter ? belowVwap : true
 
 // ════════════════════════════════════════════════════════════════════════════
-//  SIGNAL LOGIC  (4 conditions: channel zone · HTF · VWAP · candle · session)
+//  SIGNAL LOGIC  (channel zone · HTF · VWAP · candle · session · news)
 // ════════════════════════════════════════════════════════════════════════════
-buyRaw  = inLongZone  and htfBull and vwapLongOk  and candleLongOk  and sessionOk
-sellRaw = inShortZone and htfBear and vwapShortOk and candleShortOk and sessionOk
+buyRaw  = inLongZone  and htfBull and vwapLongOk  and candleLongOk  and sessionOk and newsOk
+sellRaw = inShortZone and htfBear and vwapShortOk and candleShortOk and sessionOk and newsOk
 
 var int lastSig = -999
 validBuy  = buyRaw  and (bar_index - lastSig > cooldown)
