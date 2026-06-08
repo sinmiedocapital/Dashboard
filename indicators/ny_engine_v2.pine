@@ -1,0 +1,401 @@
+//@version=5
+indicator("NY Engine v2 — A+ Setup Filter", overlay=true, max_lines_count=200, max_labels_count=100, max_boxes_count=50)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// NY ENGINE v2 — A+ SETUP FILTER
+// Designed to complement SMC Venice V5 + SMC VRVP.
+// Does NOT plot: FVGs, Order Blocks, VWAP, Structure labels, HTF Bias
+// (Venice already handles those).
+// Adds: Session levels, Killzone backgrounds, BSL/SSL pools, Judas Swing, A+ dot.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── INPUTS ──────────────────────────────────────────────────────────────────
+
+// Session Levels
+grp_sess = "── Session Levels ──────────────────────────────────"
+show_pd        = input.bool(true,  "Show Previous Day H/L/C",  group=grp_sess)
+show_asian     = input.bool(true,  "Show Asian Range H/L",     group=grp_sess)
+show_london    = input.bool(true,  "Show London Range H/L",    group=grp_sess)
+
+// Killzones
+grp_kz = "── Killzone Backgrounds ────────────────────────────"
+show_kz        = input.bool(true,  "Show Killzone Backgrounds", group=grp_kz)
+kz_opacity     = input.int(4,      "Opacity %",    minval=1, maxval=20, group=grp_kz)
+show_pm_kz     = input.bool(false, "Show PM Session (lower probability)", group=grp_kz)
+
+// BSL / SSL Liquidity Pools
+grp_liq = "── BSL / SSL Liquidity Pools ───────────────────────"
+show_liq       = input.bool(true,  "Show BSL / SSL Pools",    group=grp_liq)
+liq_lookback   = input.int(50,     "Lookback Bars",  minval=10, maxval=200, group=grp_liq)
+liq_sensitivity= input.float(0.10, "Cluster Sensitivity %", minval=0.01, maxval=1.0, step=0.01, group=grp_liq)
+liq_max        = input.int(3,      "Max Pools Shown (each side)", minval=1, maxval=5, group=grp_liq)
+
+// Judas Swing
+grp_judas = "── Judas Swing ─────────────────────────────────────"
+show_judas     = input.bool(true,  "Enable Judas Detection",  group=grp_judas)
+judas_alert    = input.bool(true,  "Fire Alert on Confirmation", group=grp_judas)
+
+// A+ Confluence Dot
+grp_dot = "── A+ Confluence Dot ───────────────────────────────"
+show_dot       = input.bool(true,  "Show Confluence Dot",     group=grp_dot)
+dot_threshold  = input.int(3,      "A+ Threshold (confluences)", minval=2, maxval=5, group=grp_dot)
+
+// ─── COLORS ───────────────────────────────────────────────────────────────────
+// Chosen to not clash with Venice's red/orange/blue palette
+
+c_pdh          = color.new(#9B8EC4, 20)   // soft lavender  — PDH/PDL
+c_pdc          = color.new(#9B8EC4, 50)   // faded lavender — PDC
+c_asian        = color.new(#00BCD4, 20)   // teal           — Asian range
+c_london       = color.new(#B0BEC5, 20)   // light gray     — London range
+c_bsl          = color.new(#00E5FF, 15)   // aqua           — buy-side liquidity
+c_ssl          = color.new(#FF6B6B, 15)   // salmon         — sell-side liquidity
+c_judas        = color.new(#FF4081, 0)    // hot pink       — Judas line
+c_dot_b        = color.new(#FFEB3B, 0)    // yellow         — 1-2 confluences
+c_dot_a        = color.new(#76FF03, 0)    // lime           — A+ (3+ confluences)
+
+// Killzone background colors (very transparent)
+_a = math.round(255 * (1 - kz_opacity / 100))
+c_kz_asian     = color.new(#FFF176, 100 - kz_opacity)  // muted yellow
+c_kz_london    = color.new(#90CAF9, 100 - kz_opacity)  // muted blue
+c_kz_ny        = color.new(#A5D6A7, 100 - kz_opacity)  // muted green
+c_kz_pm        = color.new(#FFCC80, 100 - kz_opacity)  // muted orange
+
+// ─── SESSION TIME HELPERS ─────────────────────────────────────────────────────
+
+tz = "America/New_York"
+
+// Returns true on the first bar of a session window
+in_session(sess) =>
+    not na(time(timeframe.period, sess, tz))
+
+is_asian_kz  = in_session("2000-0000")
+is_london_kz = in_session("0200-0500")
+is_ny_kz     = in_session("0700-1000")
+is_pm_kz     = in_session("1330-1600")
+
+// Detect session transitions (first bar entering a session)
+asian_open   = is_asian_kz  and not is_asian_kz[1]
+london_open  = is_london_kz and not is_london_kz[1]
+ny_open      = is_ny_kz     and not is_ny_kz[1]
+
+// Daily reset — new trading day starts at 18:00 ET (futures)
+is_new_day   = in_session("1800-1801")
+new_day      = is_new_day and not is_new_day[1]
+
+// ─── KILLZONE BACKGROUNDS ─────────────────────────────────────────────────────
+
+if show_kz
+    bgcolor(is_asian_kz  ? c_kz_asian  : na, title="Asian KZ")
+    bgcolor(is_london_kz ? c_kz_london : na, title="London KZ")
+    bgcolor(is_ny_kz     ? c_kz_ny     : na, title="NY AM KZ")
+    if show_pm_kz
+        bgcolor(is_pm_kz ? c_kz_pm : na, title="PM KZ")
+
+// ─── PREVIOUS DAY LEVELS ─────────────────────────────────────────────────────
+
+var float pd_high  = na
+var float pd_low   = na
+var float pd_close = na
+var float _d_high  = na
+var float _d_low   = na
+
+// Accumulate intraday high/low; on new day roll them to "previous day"
+if new_day
+    pd_high  := _d_high
+    pd_low   := _d_low
+    pd_close := close[1]
+    _d_high  := high
+    _d_low   := low
+else
+    _d_high := math.max(nz(_d_high, high), high)
+    _d_low  := math.min(nz(_d_low,  low),  low)
+
+// Draw as persistent lines (delete + redraw to extend right)
+var line ln_pdh = na
+var line ln_pdl = na
+var line ln_pdc = na
+var label lb_pdh = na
+var label lb_pdl = na
+var label lb_pdc = na
+
+if show_pd and not na(pd_high) and barstate.islast
+    line.delete(ln_pdh)
+    line.delete(ln_pdl)
+    line.delete(ln_pdc)
+    label.delete(lb_pdh)
+    label.delete(lb_pdl)
+    label.delete(lb_pdc)
+
+    ln_pdh := line.new(bar_index - 300, pd_high, bar_index, pd_high,
+                       color=c_pdh, style=line.style_dashed, width=1, extend=extend.right)
+    ln_pdl := line.new(bar_index - 300, pd_low,  bar_index, pd_low,
+                       color=c_pdh, style=line.style_dashed, width=1, extend=extend.right)
+    ln_pdc := line.new(bar_index - 300, pd_close, bar_index, pd_close,
+                       color=c_pdc, style=line.style_dotted, width=1, extend=extend.right)
+
+    lb_pdh := label.new(bar_index, pd_high, "PDH", style=label.style_label_left,
+                        color=color.new(color.black,100), textcolor=c_pdh, size=size.small)
+    lb_pdl := label.new(bar_index, pd_low,  "PDL", style=label.style_label_left,
+                        color=color.new(color.black,100), textcolor=c_pdh, size=size.small)
+    lb_pdc := label.new(bar_index, pd_close,"PDC", style=label.style_label_left,
+                        color=color.new(color.black,100), textcolor=c_pdc, size=size.small)
+
+// ─── ASIAN RANGE ──────────────────────────────────────────────────────────────
+
+var float as_high = na
+var float as_low  = na
+var bool  as_done = false   // true once the Asian session has closed for the day
+
+if asian_open
+    as_high := high
+    as_low  := low
+    as_done := false
+else if is_asian_kz
+    as_high := math.max(nz(as_high, high), high)
+    as_low  := math.min(nz(as_low,  low),  low)
+else if not is_asian_kz and not as_done and not na(as_high)
+    as_done := true   // seal the range when Asian session closes
+
+var line ln_ash = na
+var line ln_asl = na
+var label lb_ash = na
+var label lb_asl = na
+
+if show_asian and not na(as_high) and barstate.islast
+    line.delete(ln_ash)
+    line.delete(ln_asl)
+    label.delete(lb_ash)
+    label.delete(lb_asl)
+
+    ln_ash := line.new(bar_index - 300, as_high, bar_index, as_high,
+                       color=c_asian, style=line.style_solid, width=1, extend=extend.right)
+    ln_asl := line.new(bar_index - 300, as_low,  bar_index, as_low,
+                       color=c_asian, style=line.style_solid, width=1, extend=extend.right)
+    lb_ash := label.new(bar_index, as_high, "AsH", style=label.style_label_left,
+                        color=color.new(color.black,100), textcolor=c_asian, size=size.small)
+    lb_asl := label.new(bar_index, as_low,  "AsL", style=label.style_label_left,
+                        color=color.new(color.black,100), textcolor=c_asian, size=size.small)
+
+// ─── LONDON RANGE ─────────────────────────────────────────────────────────────
+
+var float lon_high = na
+var float lon_low  = na
+var bool  lon_done = false
+
+if london_open
+    lon_high := high
+    lon_low  := low
+    lon_done := false
+else if is_london_kz
+    lon_high := math.max(nz(lon_high, high), high)
+    lon_low  := math.min(nz(lon_low,  low),  low)
+else if not is_london_kz and not lon_done and not na(lon_high)
+    lon_done := true
+
+var line ln_lonh = na
+var line ln_lonl = na
+var label lb_lonh = na
+var label lb_lonl = na
+
+if show_london and not na(lon_high) and barstate.islast
+    line.delete(ln_lonh)
+    line.delete(ln_lonl)
+    label.delete(lb_lonh)
+    label.delete(lb_lonl)
+
+    ln_lonh := line.new(bar_index - 300, lon_high, bar_index, lon_high,
+                        color=c_london, style=line.style_solid, width=1, extend=extend.right)
+    ln_lonl := line.new(bar_index - 300, lon_low,  bar_index, lon_low,
+                        color=c_london, style=line.style_solid, width=1, extend=extend.right)
+    lb_lonh := label.new(bar_index, lon_high, "LonH", style=label.style_label_left,
+                         color=color.new(color.black,100), textcolor=c_london, size=size.small)
+    lb_lonl := label.new(bar_index, lon_low,  "LonL", style=label.style_label_left,
+                         color=color.new(color.black,100), textcolor=c_london, size=size.small)
+
+// ─── BSL / SSL LIQUIDITY POOL DETECTION ──────────────────────────────────────
+// Uses ta.pivothigh / ta.pivotlow to find swing points, then clusters nearby
+// levels into a single pool line. Auto-marks as swept when price closes through.
+
+pivot_len = 5  // bars left/right for pivot detection
+
+ph = ta.pivothigh(high, pivot_len, pivot_len)
+pl = ta.pivotlow(low,  pivot_len, pivot_len)
+
+// Arrays hold active pool prices and their line/label objects
+var bsl_prices = array.new_float(0)
+var ssl_prices = array.new_float(0)
+var bsl_lines  = array.new_line(0)
+var ssl_lines  = array.new_line(0)
+var bsl_labels = array.new_label(0)
+var ssl_labels = array.new_label(0)
+
+f_near(a, b, pct) =>
+    math.abs(a - b) / b * 100 <= pct
+
+f_add_pool(price, arr_prices, arr_lines, arr_labels, is_bsl) =>
+    // Check if this pivot clusters with an existing pool
+    is_dupe = false
+    for i = 0 to array.size(arr_prices) - 1
+        if f_near(price, array.get(arr_prices, i), liq_sensitivity)
+            is_dupe := true
+            break
+    if not is_dupe
+        // Trim oldest if at max
+        if array.size(arr_prices) >= liq_max
+            line.delete(array.get(arr_lines, 0))
+            label.delete(array.get(arr_labels, 0))
+            array.remove(arr_prices, 0)
+            array.remove(arr_lines, 0)
+            array.remove(arr_labels, 0)
+        // Add new pool
+        clr   = is_bsl ? c_bsl : c_ssl
+        lbl   = is_bsl ? "BSL ▲" : "SSL ▼"
+        sty   = is_bsl ? line.style_dotted : line.style_dotted
+        ln    = line.new(bar_index - liq_lookback, price, bar_index, price,
+                         color=clr, style=sty, width=1, extend=extend.right)
+        lb    = label.new(bar_index, price, lbl, style=label.style_label_left,
+                          color=color.new(color.black,100), textcolor=clr, size=size.small)
+        array.push(arr_prices, price)
+        array.push(arr_lines,  ln)
+        array.push(arr_labels, lb)
+
+if show_liq
+    if not na(ph)
+        f_add_pool(ph, bsl_prices, bsl_lines, bsl_labels, true)
+    if not na(pl)
+        f_add_pool(pl, ssl_prices, ssl_lines, ssl_labels, false)
+
+// Mark pools as SWEPT when price closes through them
+f_check_sweeps(arr_prices, arr_lines, arr_labels, is_bsl) =>
+    i = 0
+    while i < array.size(arr_prices)
+        p = array.get(arr_prices, i)
+        swept = is_bsl ? close > p and close[1] <= p : close < p and close[1] >= p
+        if swept
+            ln = array.get(arr_lines, i)
+            lb = array.get(arr_labels, i)
+            line.set_color(ln, color.new(is_bsl ? c_bsl : c_ssl, 70))
+            label.set_text(lb, is_bsl ? "SWEPT ▲" : "SWEPT ▼")
+            label.set_textcolor(lb, color.new(is_bsl ? c_bsl : c_ssl, 50))
+        i += 1
+
+if show_liq and barstate.isconfirmed
+    f_check_sweeps(bsl_prices, bsl_lines, bsl_labels, true)
+    f_check_sweeps(ssl_prices, ssl_lines, ssl_labels, false)
+
+// ─── JUDAS SWING DETECTION ────────────────────────────────────────────────────
+// At NY AM KZ open: track first impulse direction.
+// If impulse sweeps a BSL/SSL then closes back (engulfing wick) → Judas confirmed.
+
+var float judas_sweep_level = na
+var bool  judas_bullish     = na   // true = swept lows (→ long), false = swept highs (→ short)
+var bool  judas_confirmed   = false
+var bool  judas_fired       = false  // prevent re-firing within same NY session
+var float ny_open_price     = na
+var bool  ny_initial_dir_up = na
+
+// Reset state each NY session open
+if ny_open
+    judas_confirmed   := false
+    judas_fired       := false
+    ny_open_price     := close
+    ny_initial_dir_up := na
+    judas_sweep_level := na
+
+// Capture initial direction on first few bars of NY session
+if is_ny_kz and na(ny_initial_dir_up) and not na(ny_open_price)
+    if close > ny_open_price * 1.0005  // 0.05% move up
+        ny_initial_dir_up := true
+    else if close < ny_open_price * 0.9995
+        ny_initial_dir_up := false
+
+// Detect Judas: initial direction was UP but now we've swept BSL and reversed down
+// or initial direction was DOWN but now we've swept SSL and reversed up
+judas_bull_setup = not na(ny_initial_dir_up) and not ny_initial_dir_up and is_ny_kz
+judas_bear_setup = not na(ny_initial_dir_up) and ny_initial_dir_up and is_ny_kz
+
+// Check if we swept a pool and closed back through it this session
+var float judas_ref = na
+if show_judas and not judas_confirmed and not judas_fired
+    // Swept a sell-side pool → bullish reversal (Judas swept lows)
+    if judas_bull_setup
+        for i = 0 to array.size(ssl_prices) - 1
+            p = array.get(ssl_prices, i)
+            if low < p and close > p  // wick below, close above = sweep
+                judas_sweep_level := p
+                judas_bullish     := true
+                judas_confirmed   := true
+                judas_fired       := true
+                break
+    // Swept a buy-side pool → bearish reversal (Judas swept highs)
+    if judas_bear_setup
+        for i = 0 to array.size(bsl_prices) - 1
+            p = array.get(bsl_prices, i)
+            if high > p and close < p  // wick above, close below = sweep
+                judas_sweep_level := p
+                judas_bullish     := false
+                judas_confirmed   := true
+                judas_fired       := true
+                break
+
+// Draw Judas sweep line + label on confirmation bar
+if show_judas and judas_confirmed and judas_confirmed[0] != judas_confirmed[1]
+    jlbl = judas_bullish ? "J↑" : "J↓"
+    jtxt = judas_bullish ? "Judas — Swept Lows (Long Bias)" : "Judas — Swept Highs (Short Bias)"
+    // Dashed line at swept level
+    line.new(bar_index - 50, judas_sweep_level, bar_index, judas_sweep_level,
+             color=c_judas, style=line.style_dashed, width=2, extend=extend.right)
+    // Small label at confirmation candle
+    label.new(bar_index, judas_bullish ? low : high, jlbl,
+              style = judas_bullish ? label.style_label_up : label.style_label_down,
+              color=color.new(c_judas, 20), textcolor=color.white, size=size.small,
+              tooltip=jtxt)
+    if judas_alert
+        alert(jtxt + " @ " + str.tostring(judas_sweep_level, "#.##"), alert.freq_once_per_bar)
+
+// ─── A+ CONFLUENCE SCORING ────────────────────────────────────────────────────
+
+prox_pct = 0.0015  // within 0.15% of a level = "at" the level
+
+f_near_price(level) =>
+    not na(level) and math.abs(close - level) / level <= prox_pct
+
+score = 0
+
+// +1 for each session level proximity
+if show_pd
+    if f_near_price(pd_high) or f_near_price(pd_low) or f_near_price(pd_close)
+        score += 1
+if show_asian
+    if f_near_price(as_high) or f_near_price(as_low)
+        score += 1
+if show_london
+    if f_near_price(lon_high) or f_near_price(lon_low)
+        score += 1
+
+// +1 for being inside a killzone
+if is_ny_kz or is_london_kz
+    score += 1
+
+// +1 if Judas confirmed this NY session
+if show_judas and judas_confirmed
+    score += 1
+
+// +1 if price is near a BSL or SSL pool
+if show_liq
+    for i = 0 to array.size(bsl_prices) - 1
+        if f_near_price(array.get(bsl_prices, i))
+            score += 1
+            break
+    for i = 0 to array.size(ssl_prices) - 1
+        if f_near_price(array.get(ssl_prices, i))
+            score += 1
+            break
+
+dot_color = score >= dot_threshold ? c_dot_a : score >= 1 ? c_dot_b : na
+
+plotshape(show_dot and score >= 1, title="Confluence Dot",
+          shape=shape.circle, location=location.belowbar,
+          color=dot_color, size=size.tiny)
+
+// ─── END ──────────────────────────────────────────────────────────────────────
