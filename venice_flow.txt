@@ -45,10 +45,6 @@ grpSig     = "Signals"
 cooldown   = input.int(3,     "Signal Cooldown (bars)",      minval=1, maxval=20, group=grpSig)
 showLevels = input.bool(true, "Show Entry / SL / TP Lines",  group=grpSig)
 
-grpTP      = "Take Profit"
-tp1Ratio   = input.float(1.0, "TP1 R:R", minval=0.5, maxval=3.0, step=0.5, group=grpTP)
-tp2Ratio   = input.float(2.0, "TP2 R:R", minval=1.0, maxval=5.0, step=0.5, group=grpTP)
-
 grpAtr     = "ATR Stop"
 atrLen     = input.int(14,    "ATR Length",        minval=1, maxval=50,  group=grpAtr)
 atrMult    = input.float(0.5, "SL Buffer (x ATR)", minval=0.0, maxval=3.0, step=0.1, group=grpAtr)
@@ -142,28 +138,41 @@ if (validBuy or validSell) and barstate.isconfirmed
 bullSl = lowerCh - atrVal * atrMult
 bearSl = upperCh + atrVal * atrMult
 
-// ── TP1 Tracking ─────────────────────────────────────────────────────────────
+// ── TP Tracking  (TP1 = channel midline at entry · TP2 = opposite band) ──────
 var float tp1Track  = na
+var float tp2Track  = na
 var bool  tp1Long   = false
 var bool  tp1Short  = false
 var bool  tp1Fired  = false
+var bool  tp2Long   = false
+var bool  tp2Short  = false
+var bool  tp2Fired  = false
 var int   tp1SetBar = -999
+var int   tp2SetBar = -999
 
 if validBuy
-    _r        = close - bullSl
-    tp1Track  := close + _r * tp1Ratio
+    tp1Track  := midCh     // exit at channel midline
+    tp2Track  := upperCh   // full move to upper band
     tp1Long   := true
     tp1Short  := false
     tp1Fired  := false
+    tp2Long   := true
+    tp2Short  := false
+    tp2Fired  := false
     tp1SetBar := bar_index
+    tp2SetBar := bar_index
 
 if validSell
-    _r        = bearSl - close
-    tp1Track  := close - _r * tp1Ratio
+    tp1Track  := midCh     // exit at channel midline
+    tp2Track  := lowerCh   // full move to lower band
     tp1Long   := false
     tp1Short  := true
     tp1Fired  := false
+    tp2Long   := false
+    tp2Short  := true
+    tp2Fired  := false
     tp1SetBar := bar_index
+    tp2SetBar := bar_index
 
 tp1Hit = false
 if not na(tp1Track) and not tp1Fired and bar_index > tp1SetBar
@@ -175,6 +184,17 @@ if not na(tp1Track) and not tp1Fired and bar_index > tp1SetBar
         tp1Hit   := true
         tp1Fired := true
         tp1Short := false
+
+tp2Hit = false
+if not na(tp2Track) and not tp2Fired and bar_index > tp2SetBar
+    if tp2Long  and high >= tp2Track
+        tp2Hit   := true
+        tp2Fired := true
+        tp2Long  := false
+    if tp2Short and low  <= tp2Track
+        tp2Hit   := true
+        tp2Fired := true
+        tp2Short := false
 
 // ── SL Tracking ──────────────────────────────────────────────────────────────
 var float slTrack  = na
@@ -237,6 +257,8 @@ plotshape(validSell,   "SHORT",         shape.triangledown, location.abovebar,
      color=colBear, size=size.large, text="SHORT", textcolor=color.white)
 plotshape(tp1Hit,      "TP1 Hit",       shape.circle,       location.abovebar,
      color=color.new(#ffd700, 10), size=size.small)
+plotshape(tp2Hit,      "TP2 Hit",       shape.circle,       location.abovebar,
+     color=color.new(#ffd700, 0),  size=size.normal)
 plotshape(slBreach,    "SL Breach",     shape.xcross,       location.abovebar,
      color=color.new(#ff3b5c, 0),  size=size.small)
 plotshape(chBreakBull, "Ch Break Up",   shape.circle,       location.abovebar,
@@ -254,18 +276,13 @@ var line[] tp2Lines   = array.new<line>(0)
 
 if showLevels
     if validBuy
-        entryPx = close
-        slPx    = bullSl
-        r       = entryPx - slPx
-        tp1Px   = entryPx + r * tp1Ratio
-        tp2Px   = entryPx + r * tp2Ratio
-        array.push(entryLines, line.new(bar_index, entryPx, bar_index + levelLen, entryPx,
+        array.push(entryLines, line.new(bar_index, close,   bar_index + levelLen, close,
              color=colEntry, width=1, style=line.style_dashed))
-        array.push(slLines,    line.new(bar_index, slPx,    bar_index + levelLen, slPx,
+        array.push(slLines,    line.new(bar_index, bullSl,  bar_index + levelLen, bullSl,
              color=colSL,    width=2, style=line.style_solid))
-        array.push(tp1Lines,   line.new(bar_index, tp1Px,   bar_index + levelLen, tp1Px,
+        array.push(tp1Lines,   line.new(bar_index, midCh,   bar_index + levelLen, midCh,
              color=colTP1,   width=1, style=line.style_dashed))
-        array.push(tp2Lines,   line.new(bar_index, tp2Px,   bar_index + levelLen, tp2Px,
+        array.push(tp2Lines,   line.new(bar_index, upperCh, bar_index + levelLen, upperCh,
              color=colTP2,   width=2, style=line.style_solid))
         if array.size(entryLines) > maxLevelSet
             line.delete(array.shift(entryLines))
@@ -273,18 +290,13 @@ if showLevels
             line.delete(array.shift(tp1Lines))
             line.delete(array.shift(tp2Lines))
     if validSell
-        entryPx = close
-        slPx    = bearSl
-        r       = slPx - entryPx
-        tp1Px   = entryPx - r * tp1Ratio
-        tp2Px   = entryPx - r * tp2Ratio
-        array.push(entryLines, line.new(bar_index, entryPx, bar_index + levelLen, entryPx,
+        array.push(entryLines, line.new(bar_index, close,   bar_index + levelLen, close,
              color=colEntry, width=1, style=line.style_dashed))
-        array.push(slLines,    line.new(bar_index, slPx,    bar_index + levelLen, slPx,
+        array.push(slLines,    line.new(bar_index, bearSl,  bar_index + levelLen, bearSl,
              color=colSL,    width=2, style=line.style_solid))
-        array.push(tp1Lines,   line.new(bar_index, tp1Px,   bar_index + levelLen, tp1Px,
+        array.push(tp1Lines,   line.new(bar_index, midCh,   bar_index + levelLen, midCh,
              color=colTP1,   width=1, style=line.style_dashed))
-        array.push(tp2Lines,   line.new(bar_index, tp2Px,   bar_index + levelLen, tp2Px,
+        array.push(tp2Lines,   line.new(bar_index, lowerCh, bar_index + levelLen, lowerCh,
              color=colTP2,   width=2, style=line.style_solid))
         if array.size(entryLines) > maxLevelSet
             line.delete(array.shift(entryLines))
@@ -292,29 +304,46 @@ if showLevels
             line.delete(array.shift(tp1Lines))
             line.delete(array.shift(tp2Lines))
 
-// ── Status Panel (2 rows: HTF + Channel) ─────────────────────────────────────
+// ── Status Panel (4 rows: HTF · VWAP · Zone · Target) ────────────────────────
 if showPanel
-    var table statusPanel = table.new(position.top_right, 2, 2,
+    var table statusPanel = table.new(position.top_right, 2, 4,
          bgcolor      = color.new(#0d0d0d, 55),
          border_color = color.new(color.gray, 65),
          border_width = 1,
          frame_color  = color.new(color.gray, 45),
          frame_width  = 1)
 
+    labelCol = color.new(color.white, 35)
+    darkBg   = color.new(#0d0d0d, 55)
+
+    // Row 0 — HTF Bias
     htfTxt = htfBull ? "BULL ▲" : "BEAR ▼"
     htfCol = htfBull ? color.new(colBull, 0)  : color.new(colBear, 0)
     htfBg  = htfBull ? color.new(colBull, 82) : color.new(colBear, 82)
-    table.cell(statusPanel, 0, 0, "HTF",
-         text_color=color.new(color.white, 35), text_size=size.small,
-         bgcolor=color.new(#0d0d0d, 55))
-    table.cell(statusPanel, 1, 0, htfTxt,
-         text_color=htfCol, text_size=size.small, bgcolor=htfBg)
+    table.cell(statusPanel, 0, 0, "HTF",   text_color=labelCol, text_size=size.small, bgcolor=darkBg)
+    table.cell(statusPanel, 1, 0, htfTxt,  text_color=htfCol,   text_size=size.small, bgcolor=htfBg)
 
-    chStatus = chAboveUpper ? "Break ↑" : chBelowLower ? "Break ↓" : "In Channel"
-    chBg     = chAboveUpper ? color.new(#4fc3f7, 50) : chBelowLower ? color.new(#ff6b6b, 50) : color.new(color.gray, 80)
-    chTxt    = (chAboveUpper or chBelowLower) ? color.white : color.new(color.gray, 20)
-    table.cell(statusPanel, 0, 1, "Channel",
-         text_color=color.new(color.white, 35), text_size=size.small,
-         bgcolor=color.new(#0d0d0d, 55))
-    table.cell(statusPanel, 1, 1, chStatus,
-         text_color=chTxt, text_size=size.small, bgcolor=chBg)
+    // Row 1 — VWAP stance
+    vwapTxt = aboveVwap ? "Above ▲" : "Below ▼"
+    vwapCol = aboveVwap ? color.new(colBull, 0) : color.new(colBear, 0)
+    vwapBg  = aboveVwap ? color.new(colBull, 82) : color.new(colBear, 82)
+    table.cell(statusPanel, 0, 1, "VWAP",  text_color=labelCol, text_size=size.small, bgcolor=darkBg)
+    table.cell(statusPanel, 1, 1, vwapTxt, text_color=vwapCol,  text_size=size.small, bgcolor=vwapBg)
+
+    // Row 2 — Channel Zone
+    zoneTxt = chBelowLower ? "Break ↓" : chAboveUpper ? "Break ↑" :
+              close < midCh ? "Lower Half" : "Upper Half"
+    zoneBg  = chBelowLower ? color.new(#ff6b6b, 50) : chAboveUpper ? color.new(#4fc3f7, 50) :
+              close < midCh ? color.new(colBull, 82) : color.new(colBear, 82)
+    zoneCol = color.white
+    table.cell(statusPanel, 0, 2, "Zone",   text_color=labelCol, text_size=size.small, bgcolor=darkBg)
+    table.cell(statusPanel, 1, 2, zoneTxt,  text_color=zoneCol,  text_size=size.small, bgcolor=zoneBg)
+
+    // Row 3 — Trade Target (where you're pointing in the channel)
+    tgtTxt  = chBelowLower ? "Extended ↓" : chAboveUpper ? "Extended ↑" :
+              close < midCh ? "Mid · Upper" : "Mid · Lower"
+    tgtCol  = chBelowLower or chAboveUpper ? color.new(color.gray, 30) :
+              close < midCh ? color.new(colBull, 0) : color.new(colBear, 0)
+    tgtBg   = color.new(#0d0d0d, 35)
+    table.cell(statusPanel, 0, 3, "Target", text_color=labelCol, text_size=size.small, bgcolor=darkBg)
+    table.cell(statusPanel, 1, 3, tgtTxt,   text_color=tgtCol,   text_size=size.small, bgcolor=tgtBg)
