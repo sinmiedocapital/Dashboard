@@ -1,0 +1,305 @@
+//@version=6
+indicator("Venice Flow  ·  Sin Miedo Capital",
+     overlay          = true,
+     max_lines_count  = 60,
+     max_labels_count = 5,
+     max_bars_back    = 300)
+
+// ════════════════════════════════════════════════════════════════════════════
+//  INPUTS
+// ════════════════════════════════════════════════════════════════════════════
+grpHTF     = "HTF Bias"
+htfTf      = input.timeframe("60",  "HTF Timeframe",     group=grpHTF)
+htfEmaLen  = input.int(50,          "HTF EMA Length",    minval=1, maxval=200, group=grpHTF)
+showPanel  = input.bool(true,       "Show Status Panel", group=grpHTF)
+
+grpCh      = "Channel"
+structLen  = input.int(5,    "Channel Sensitivity",   minval=2, maxval=20, group=grpCh,
+     tooltip="Controls how wide and smooth the channel is. Lower = tighter to recent price. Higher = smoother/slower.")
+showChannel = input.bool(true, "Show Channel", group=grpCh)
+
+grpVwap    = "VWAP"
+showVwap   = input.bool(true, "Show VWAP Line",  group=grpVwap)
+vwapFilter = input.bool(true, "VWAP as Filter",  group=grpVwap,
+     tooltip="Only fires longs above VWAP, shorts below.")
+
+grpCandle  = "Candle"
+useCandle  = input.bool(true,  "Require Rejection Candle", group=grpCandle)
+wickMult   = input.float(1.5,  "Min Wick Ratio",           group=grpCandle,
+     minval=1.0, maxval=4.0, step=0.5,
+     tooltip="Lower wick must be this many times larger than the candle body for a Hammer. Same for upper wick on Shooting Star.")
+
+grpSess    = "Session Filter"
+useSession = input.bool(true,             "NY Session Filter",      group=grpSess,
+     tooltip="Only fires during the two NY windows below. Blocks overnight noise.")
+sess1      = input.session("0930-1130",   "Morning Window (ET)",    group=grpSess)
+sess2      = input.session("1300-1430",   "Afternoon Window (ET)",  group=grpSess)
+
+grpSig     = "Signals"
+cooldown   = input.int(3,     "Signal Cooldown (bars)",      minval=1, maxval=20, group=grpSig)
+showLevels = input.bool(true, "Show Entry / SL / TP Lines",  group=grpSig)
+
+grpTP      = "Take Profit"
+tp1Ratio   = input.float(1.0, "TP1 R:R", minval=0.5, maxval=3.0, step=0.5, group=grpTP)
+tp2Ratio   = input.float(2.0, "TP2 R:R", minval=1.0, maxval=5.0, step=0.5, group=grpTP)
+
+grpAtr     = "ATR Stop"
+atrLen     = input.int(14,    "ATR Length",        minval=1, maxval=50,  group=grpAtr)
+atrMult    = input.float(0.5, "SL Buffer (x ATR)", minval=0.0, maxval=3.0, step=0.1, group=grpAtr)
+
+// ════════════════════════════════════════════════════════════════════════════
+//  COLORS
+// ════════════════════════════════════════════════════════════════════════════
+colBull  = #00c076
+colBear  = #ff3b5c
+colEntry = color.new(color.white, 30)
+colSL    = color.new(#ff3b5c, 15)
+colTP1   = color.new(#00c076, 40)
+colTP2   = color.new(#00c076, 10)
+colVwap  = #b388ff
+
+// ════════════════════════════════════════════════════════════════════════════
+//  CORE CALCULATIONS
+// ════════════════════════════════════════════════════════════════════════════
+atrVal = ta.atr(atrLen)
+
+[htfClose, htfEmaVal] = request.security(syminfo.tickerid, htfTf,
+     [close, ta.ema(close, htfEmaLen)], lookahead=barmerge.lookahead_off)
+htfBull = htfClose > htfEmaVal
+htfBear = htfClose < htfEmaVal
+
+vwapVal   = ta.vwap(hlc3)
+aboveVwap = close > vwapVal
+belowVwap = close < vwapVal
+
+// ── Channel ──────────────────────────────────────────────────────────────────
+chLen   = math.max(10, structLen * 6)
+upperCh = ta.linreg(high, chLen, 0) + atrVal * 0.3
+lowerCh = ta.linreg(low,  chLen, 0) - atrVal * 0.3
+midCh   = (upperCh + lowerCh) / 2.0
+
+// Lower half of channel = long opportunity zone, upper half = short
+inLongZone  = close < midCh
+inShortZone = close > midCh
+
+chBreakBull  = ta.crossover(close,  upperCh)
+chBreakBear  = ta.crossunder(close, lowerCh)
+chAboveUpper = close > upperCh
+chBelowLower = close < lowerCh
+
+// ── Session Filter ───────────────────────────────────────────────────────────
+inSess1   = not na(time(timeframe.period, sess1, "America/New_York"))
+inSess2   = not na(time(timeframe.period, sess2, "America/New_York"))
+sessionOk = useSession ? (inSess1 or inSess2) : true
+
+// ── Candle Patterns ──────────────────────────────────────────────────────────
+bodySize  = math.abs(close - open)
+upperWick = high - math.max(close, open)
+lowerWick = math.min(close, open) - low
+
+hammer     = close > open and bodySize > 0 and
+             lowerWick >= bodySize * wickMult and upperWick <= bodySize * 0.6
+bullEngulf = close > open and open[1] > close[1] and close > open[1] and open < close[1]
+shootStar  = close < open and bodySize > 0 and
+             upperWick >= bodySize * wickMult and lowerWick <= bodySize * 0.6
+bearEngulf = close < open and close[1] > open[1] and close < open[1] and open > close[1]
+
+candleLongOk  = useCandle ? (hammer or bullEngulf) : true
+candleShortOk = useCandle ? (shootStar or bearEngulf) : true
+
+// ── VWAP Filter ──────────────────────────────────────────────────────────────
+vwapLongOk  = vwapFilter ? aboveVwap : true
+vwapShortOk = vwapFilter ? belowVwap : true
+
+// ════════════════════════════════════════════════════════════════════════════
+//  SIGNAL LOGIC  (4 conditions: channel zone · HTF · VWAP · candle · session)
+// ════════════════════════════════════════════════════════════════════════════
+buyRaw  = inLongZone  and htfBull and vwapLongOk  and candleLongOk  and sessionOk
+sellRaw = inShortZone and htfBear and vwapShortOk and candleShortOk and sessionOk
+
+var int lastSig = -999
+validBuy  = buyRaw  and (bar_index - lastSig > cooldown)
+validSell = sellRaw and (bar_index - lastSig > cooldown)
+if (validBuy or validSell) and barstate.isconfirmed
+    lastSig := bar_index
+
+// ── Stop Loss (channel boundary + ATR buffer) ─────────────────────────────────
+bullSl = lowerCh - atrVal * atrMult
+bearSl = upperCh + atrVal * atrMult
+
+// ── TP1 Tracking ─────────────────────────────────────────────────────────────
+var float tp1Track  = na
+var bool  tp1Long   = false
+var bool  tp1Short  = false
+var bool  tp1Fired  = false
+var int   tp1SetBar = -999
+
+if validBuy
+    _r        = close - bullSl
+    tp1Track  := close + _r * tp1Ratio
+    tp1Long   := true
+    tp1Short  := false
+    tp1Fired  := false
+    tp1SetBar := bar_index
+
+if validSell
+    _r        = bearSl - close
+    tp1Track  := close - _r * tp1Ratio
+    tp1Long   := false
+    tp1Short  := true
+    tp1Fired  := false
+    tp1SetBar := bar_index
+
+tp1Hit = false
+if not na(tp1Track) and not tp1Fired and bar_index > tp1SetBar
+    if tp1Long  and high >= tp1Track
+        tp1Hit   := true
+        tp1Fired := true
+        tp1Long  := false
+    if tp1Short and low  <= tp1Track
+        tp1Hit   := true
+        tp1Fired := true
+        tp1Short := false
+
+// ── SL Tracking ──────────────────────────────────────────────────────────────
+var float slTrack  = na
+var bool  slLong   = false
+var bool  slShort  = false
+var bool  slFired  = false
+var int   slSetBar = -999
+
+if validBuy
+    slTrack  := bullSl
+    slLong   := true
+    slShort  := false
+    slFired  := false
+    slSetBar := bar_index
+
+if validSell
+    slTrack  := bearSl
+    slLong   := false
+    slShort  := true
+    slFired  := false
+    slSetBar := bar_index
+
+slBreach = false
+if not na(slTrack) and not slFired and bar_index > slSetBar
+    if slLong  and close < slTrack
+        slBreach := true
+        slFired  := true
+        slLong   := false
+    if slShort and close > slTrack
+        slBreach := true
+        slFired  := true
+        slShort  := false
+
+// ════════════════════════════════════════════════════════════════════════════
+//  VISUALS
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── Channel + fill ───────────────────────────────────────────────────────────
+pUpper = plot(showChannel ? upperCh : na, "Upper Channel",
+     color=color.new(#4fc3f7, 10), linewidth=2)
+pMid   = plot(showChannel ? midCh   : na, "Mid Channel",
+     color=color.new(color.white, 80), linewidth=1)
+pLower = plot(showChannel ? lowerCh : na, "Lower Channel",
+     color=color.new(#ff6b6b, 10), linewidth=2)
+
+fill(pUpper, pMid,   color=color.new(#4fc3f7, 97))
+fill(pMid,   pLower, color=color.new(#ff6b6b, 97))
+
+// ── VWAP ─────────────────────────────────────────────────────────────────────
+plot(showVwap ? vwapVal : na, "VWAP", color=color.new(colVwap, 15), linewidth=2)
+
+// ── Bar backgrounds ──────────────────────────────────────────────────────────
+bgcolor(validBuy  ? color.new(colBull, 90) : na, title="Long Bar BG")
+bgcolor(validSell ? color.new(colBear, 90) : na, title="Short Bar BG")
+
+// ── Signal arrows ────────────────────────────────────────────────────────────
+plotshape(validBuy,    "LONG",          shape.triangleup,   location.belowbar,
+     color=colBull, size=size.large, text="LONG",  textcolor=color.white)
+plotshape(validSell,   "SHORT",         shape.triangledown, location.abovebar,
+     color=colBear, size=size.large, text="SHORT", textcolor=color.white)
+plotshape(tp1Hit,      "TP1 Hit",       shape.circle,       location.abovebar,
+     color=color.new(#ffd700, 10), size=size.small)
+plotshape(slBreach,    "SL Breach",     shape.xcross,       location.abovebar,
+     color=color.new(#ff3b5c, 0),  size=size.small)
+plotshape(chBreakBull, "Ch Break Up",   shape.circle,       location.abovebar,
+     color=color.new(#4fc3f7, 0), size=size.tiny)
+plotshape(chBreakBear, "Ch Break Down", shape.circle,       location.belowbar,
+     color=color.new(#ff6b6b, 0), size=size.tiny)
+
+// ── Entry / SL / TP Level Lines ──────────────────────────────────────────────
+levelLen    = 30
+maxLevelSet = 6
+var line[] entryLines = array.new<line>(0)
+var line[] slLines    = array.new<line>(0)
+var line[] tp1Lines   = array.new<line>(0)
+var line[] tp2Lines   = array.new<line>(0)
+
+if showLevels
+    if validBuy
+        entryPx = close
+        slPx    = bullSl
+        r       = entryPx - slPx
+        tp1Px   = entryPx + r * tp1Ratio
+        tp2Px   = entryPx + r * tp2Ratio
+        array.push(entryLines, line.new(bar_index, entryPx, bar_index + levelLen, entryPx,
+             color=colEntry, width=1, style=line.style_dashed))
+        array.push(slLines,    line.new(bar_index, slPx,    bar_index + levelLen, slPx,
+             color=colSL,    width=2, style=line.style_solid))
+        array.push(tp1Lines,   line.new(bar_index, tp1Px,   bar_index + levelLen, tp1Px,
+             color=colTP1,   width=1, style=line.style_dashed))
+        array.push(tp2Lines,   line.new(bar_index, tp2Px,   bar_index + levelLen, tp2Px,
+             color=colTP2,   width=2, style=line.style_solid))
+        if array.size(entryLines) > maxLevelSet
+            line.delete(array.shift(entryLines))
+            line.delete(array.shift(slLines))
+            line.delete(array.shift(tp1Lines))
+            line.delete(array.shift(tp2Lines))
+    if validSell
+        entryPx = close
+        slPx    = bearSl
+        r       = slPx - entryPx
+        tp1Px   = entryPx - r * tp1Ratio
+        tp2Px   = entryPx - r * tp2Ratio
+        array.push(entryLines, line.new(bar_index, entryPx, bar_index + levelLen, entryPx,
+             color=colEntry, width=1, style=line.style_dashed))
+        array.push(slLines,    line.new(bar_index, slPx,    bar_index + levelLen, slPx,
+             color=colSL,    width=2, style=line.style_solid))
+        array.push(tp1Lines,   line.new(bar_index, tp1Px,   bar_index + levelLen, tp1Px,
+             color=colTP1,   width=1, style=line.style_dashed))
+        array.push(tp2Lines,   line.new(bar_index, tp2Px,   bar_index + levelLen, tp2Px,
+             color=colTP2,   width=2, style=line.style_solid))
+        if array.size(entryLines) > maxLevelSet
+            line.delete(array.shift(entryLines))
+            line.delete(array.shift(slLines))
+            line.delete(array.shift(tp1Lines))
+            line.delete(array.shift(tp2Lines))
+
+// ── Status Panel (2 rows: HTF + Channel) ─────────────────────────────────────
+if showPanel
+    var table statusPanel = table.new(position.top_right, 2, 2,
+         bgcolor      = color.new(#0d0d0d, 55),
+         border_color = color.new(color.gray, 65),
+         border_width = 1,
+         frame_color  = color.new(color.gray, 45),
+         frame_width  = 1)
+
+    htfTxt = htfBull ? "BULL ▲" : "BEAR ▼"
+    htfCol = htfBull ? color.new(colBull, 0)  : color.new(colBear, 0)
+    htfBg  = htfBull ? color.new(colBull, 82) : color.new(colBear, 82)
+    table.cell(statusPanel, 0, 0, "HTF",
+         text_color=color.new(color.white, 35), text_size=size.small,
+         bgcolor=color.new(#0d0d0d, 55))
+    table.cell(statusPanel, 1, 0, htfTxt,
+         text_color=htfCol, text_size=size.small, bgcolor=htfBg)
+
+    chStatus = chAboveUpper ? "Break ↑" : chBelowLower ? "Break ↓" : "In Channel"
+    chBg     = chAboveUpper ? color.new(#4fc3f7, 50) : chBelowLower ? color.new(#ff6b6b, 50) : color.new(color.gray, 80)
+    chTxt    = (chAboveUpper or chBelowLower) ? color.white : color.new(color.gray, 20)
+    table.cell(statusPanel, 0, 1, "Channel",
+         text_color=color.new(color.white, 35), text_size=size.small,
+         bgcolor=color.new(#0d0d0d, 55))
+    table.cell(statusPanel, 1, 1, chStatus,
+         text_color=chTxt, text_size=size.small, bgcolor=chBg)
