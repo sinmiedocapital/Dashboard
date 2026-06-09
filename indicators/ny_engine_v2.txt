@@ -85,8 +85,7 @@ new_day      = is_new_day and not is_new_day[1]
 // Long bias → levels ABOVE price are draws (price is being pulled up toward them).
 // Short bias → levels BELOW price are draws (price is being pulled down).
 f_is_draw(level_price) =>
-    htf_bias == "Long"  and level_price > close or
-    htf_bias == "Short" and level_price < close
+    (htf_bias == "Long" and level_price > close) or (htf_bias == "Short" and level_price < close)
 
 // Returns " ⊕" for a draw level, " ⊗" for an opposing level, "" when neutral.
 f_suffix(level_price) =>
@@ -419,13 +418,9 @@ near_asian  = show_asian  and (f_near_price(as_high)  or f_near_price(as_low))
 near_london = show_london and (f_near_price(lon_high) or f_near_price(lon_low))
 any_near_session = near_pd or near_asian or near_london
 
-draw_pd     = show_pd     and ((f_near_price(pd_high)  and f_is_draw(pd_high))  or
-                               (f_near_price(pd_low)   and f_is_draw(pd_low))   or
-                               (f_near_price(pd_close) and f_is_draw(pd_close)))
-draw_asian  = show_asian  and ((f_near_price(as_high)  and f_is_draw(as_high))  or
-                               (f_near_price(as_low)   and f_is_draw(as_low)))
-draw_london = show_london and ((f_near_price(lon_high) and f_is_draw(lon_high)) or
-                               (f_near_price(lon_low)  and f_is_draw(lon_low)))
+draw_pd     = show_pd     and ((f_near_price(pd_high) and f_is_draw(pd_high)) or (f_near_price(pd_low) and f_is_draw(pd_low)) or (f_near_price(pd_close) and f_is_draw(pd_close)))
+draw_asian  = show_asian  and ((f_near_price(as_high) and f_is_draw(as_high)) or (f_near_price(as_low) and f_is_draw(as_low)))
+draw_london = show_london and ((f_near_price(lon_high) and f_is_draw(lon_high)) or (f_near_price(lon_low) and f_is_draw(lon_low)))
 any_near_draw = draw_pd or draw_asian or draw_london
 
 // Conflict: high confluence score, sitting at a level, but that level opposes the bias
