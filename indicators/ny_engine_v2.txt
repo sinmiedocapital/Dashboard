@@ -3,39 +3,41 @@ indicator("NY Engine v2 — A+ Setup Filter", overlay=true, max_lines_count=200,
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // NY ENGINE v2 — A+ SETUP FILTER
-// Designed to complement SMC Venice V5 + SMC VRVP.
-// Does NOT plot: FVGs, Order Blocks, VWAP, Structure labels, HTF Bias
-// (Venice already handles those).
-// Adds: Session levels, Killzone backgrounds, BSL/SSL pools, Judas Swing, A+ dot.
+// Complement layer for SMC Venice V5 + SMC VRVP.
+// Venice covers: FVGs, OBs, VWAP, Structure, HTF Bias.
+// This indicator adds: Session levels, Killzones, BSL/SSL pools,
+// Judas Swing, Bias Bridge (TARGET/TRAP labels), A+ confluence dot.
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // ─── INPUTS ──────────────────────────────────────────────────────────────────
 
-// Session Levels
 grp_sess = "── Session Levels ──────────────────────────────────"
 show_pd        = input.bool(true,  "Show Previous Day H/L/C",  group=grp_sess)
 show_asian     = input.bool(true,  "Show Asian Range H/L",     group=grp_sess)
 show_london    = input.bool(true,  "Show London Range H/L",    group=grp_sess)
 
-// Killzones
 grp_kz = "── Killzone Backgrounds ────────────────────────────"
 show_kz        = input.bool(true,  "Show Killzone Backgrounds", group=grp_kz)
 kz_opacity     = input.int(4,      "Opacity %",    minval=1, maxval=20, group=grp_kz)
 show_pm_kz     = input.bool(false, "Show PM Session (lower probability)", group=grp_kz)
 
-// BSL / SSL Liquidity Pools
 grp_liq = "── BSL / SSL Liquidity Pools ───────────────────────"
 show_liq       = input.bool(true,  "Show BSL / SSL Pools",    group=grp_liq)
 liq_lookback   = input.int(50,     "Lookback Bars",  minval=10, maxval=200, group=grp_liq)
 liq_sensitivity= input.float(0.10, "Cluster Sensitivity %", minval=0.01, maxval=1.0, step=0.01, group=grp_liq)
 liq_max        = input.int(3,      "Max Pools Shown (each side)", minval=1, maxval=5, group=grp_liq)
 
-// Judas Swing
 grp_judas = "── Judas Swing ─────────────────────────────────────"
 show_judas     = input.bool(true,  "Enable Judas Detection",  group=grp_judas)
 judas_alert    = input.bool(true,  "Fire Alert on Confirmation", group=grp_judas)
 
-// A+ Confluence Dot
+// ─── BIAS BRIDGE ─────────────────────────────────────────────────────────────
+// Glance at Venice's HTF Bias panel → set this dropdown to match.
+// NY Engine instantly reclassifies every level as TARGET (⊕) or TRAP (⊗).
+grp_bias = "── Bias Bridge (set from Venice) ───────────────────"
+htf_bias = input.string("Neutral", "HTF Bias (match Venice)",
+             options=["Long", "Short", "Neutral"], group=grp_bias)
+
 grp_dot = "── A+ Confluence Dot ───────────────────────────────"
 show_dot       = input.bool(true,  "Show Confluence Dot",     group=grp_dot)
 dot_threshold  = input.int(3,      "A+ Threshold (confluences)", minval=2, maxval=5, group=grp_dot)
@@ -49,13 +51,14 @@ c_london       = color.new(#B0BEC5, 20)   // light gray     — London range
 c_bsl          = color.new(#00E5FF, 15)   // aqua           — buy-side liquidity
 c_ssl          = color.new(#FF6B6B, 15)   // salmon         — sell-side liquidity
 c_judas        = color.new(#FF4081, 0)    // hot pink       — Judas line
-c_dot_b        = color.new(#FFEB3B, 0)    // yellow         — 1-2 confluences
-c_dot_a        = color.new(#76FF03, 0)    // lime           — A+ (3+ confluences)
+c_dot_b        = color.new(#FFEB3B, 0)    // yellow         — building confluence
+c_dot_a        = color.new(#76FF03, 0)    // lime           — A+ aligned with bias
+c_dot_conflict = color.new(#FF9800, 0)    // orange         — A+ score but opposing bias (skip)
 
-c_kz_asian     = color.new(#FFF176, 100 - kz_opacity)  // muted yellow
-c_kz_london    = color.new(#90CAF9, 100 - kz_opacity)  // muted blue
-c_kz_ny        = color.new(#A5D6A7, 100 - kz_opacity)  // muted green
-c_kz_pm        = color.new(#FFCC80, 100 - kz_opacity)  // muted orange
+c_kz_asian     = color.new(#FFF176, 100 - kz_opacity)
+c_kz_london    = color.new(#90CAF9, 100 - kz_opacity)
+c_kz_ny        = color.new(#A5D6A7, 100 - kz_opacity)
+c_kz_pm        = color.new(#FFCC80, 100 - kz_opacity)
 
 // ─── SESSION TIME HELPERS ─────────────────────────────────────────────────────
 
@@ -76,7 +79,24 @@ ny_open      = is_ny_kz     and not is_ny_kz[1]
 is_new_day   = in_session("1800-1801")
 new_day      = is_new_day and not is_new_day[1]
 
-// ─── KILLZONE BACKGROUNDS (unconditional calls — condition lives in color arg) ─
+// ─── BIAS BRIDGE HELPERS ──────────────────────────────────────────────────────
+
+// A level is a DRAW when it lies in the direction bias is pulling price.
+// Long bias → levels ABOVE price are draws (price is being pulled up toward them).
+// Short bias → levels BELOW price are draws (price is being pulled down).
+f_is_draw(level_price) =>
+    htf_bias == "Long"  and level_price > close or
+    htf_bias == "Short" and level_price < close
+
+// Returns " ⊕" for a draw level, " ⊗" for an opposing level, "" when neutral.
+f_suffix(level_price) =>
+    htf_bias == "Neutral" ? "" : f_is_draw(level_price) ? " ⊕" : " ⊗"
+
+// Draw levels get a wider line so they stand out as targets.
+f_width(level_price) =>
+    htf_bias != "Neutral" and f_is_draw(level_price) ? 2 : 1
+
+// ─── KILLZONE BACKGROUNDS ─────────────────────────────────────────────────────
 
 bgcolor(show_kz and is_asian_kz              ? c_kz_asian  : na, title="Asian KZ")
 bgcolor(show_kz and is_london_kz             ? c_kz_london : na, title="London KZ")
@@ -117,17 +137,17 @@ if show_pd and not na(pd_high) and barstate.islast
     label.delete(lb_pdc)
 
     ln_pdh := line.new(bar_index - 300, pd_high,  bar_index, pd_high,
-                       color=c_pdh, style=line.style_dashed, width=1, extend=extend.right)
+                       color=c_pdh, style=line.style_dashed, width=f_width(pd_high),  extend=extend.right)
     ln_pdl := line.new(bar_index - 300, pd_low,   bar_index, pd_low,
-                       color=c_pdh, style=line.style_dashed, width=1, extend=extend.right)
+                       color=c_pdh, style=line.style_dashed, width=f_width(pd_low),   extend=extend.right)
     ln_pdc := line.new(bar_index - 300, pd_close, bar_index, pd_close,
-                       color=c_pdc, style=line.style_dotted, width=1, extend=extend.right)
+                       color=c_pdc, style=line.style_dotted, width=1,                 extend=extend.right)
 
-    lb_pdh := label.new(bar_index, pd_high,  "PDH", style=label.style_label_left,
+    lb_pdh := label.new(bar_index, pd_high,  "PDH" + f_suffix(pd_high),  style=label.style_label_left,
                         color=color.new(color.black, 100), textcolor=c_pdh, size=size.small)
-    lb_pdl := label.new(bar_index, pd_low,   "PDL", style=label.style_label_left,
+    lb_pdl := label.new(bar_index, pd_low,   "PDL" + f_suffix(pd_low),   style=label.style_label_left,
                         color=color.new(color.black, 100), textcolor=c_pdh, size=size.small)
-    lb_pdc := label.new(bar_index, pd_close, "PDC", style=label.style_label_left,
+    lb_pdc := label.new(bar_index, pd_close, "PDC" + f_suffix(pd_close), style=label.style_label_left,
                         color=color.new(color.black, 100), textcolor=c_pdc, size=size.small)
 
 // ─── ASIAN RANGE ──────────────────────────────────────────────────────────────
@@ -158,12 +178,12 @@ if show_asian and not na(as_high) and barstate.islast
     label.delete(lb_asl)
 
     ln_ash := line.new(bar_index - 300, as_high, bar_index, as_high,
-                       color=c_asian, style=line.style_solid, width=1, extend=extend.right)
+                       color=c_asian, style=line.style_solid, width=f_width(as_high), extend=extend.right)
     ln_asl := line.new(bar_index - 300, as_low,  bar_index, as_low,
-                       color=c_asian, style=line.style_solid, width=1, extend=extend.right)
-    lb_ash := label.new(bar_index, as_high, "AsH", style=label.style_label_left,
+                       color=c_asian, style=line.style_solid, width=f_width(as_low),  extend=extend.right)
+    lb_ash := label.new(bar_index, as_high, "AsH" + f_suffix(as_high), style=label.style_label_left,
                         color=color.new(color.black, 100), textcolor=c_asian, size=size.small)
-    lb_asl := label.new(bar_index, as_low,  "AsL", style=label.style_label_left,
+    lb_asl := label.new(bar_index, as_low,  "AsL" + f_suffix(as_low),  style=label.style_label_left,
                         color=color.new(color.black, 100), textcolor=c_asian, size=size.small)
 
 // ─── LONDON RANGE ─────────────────────────────────────────────────────────────
@@ -194,12 +214,12 @@ if show_london and not na(lon_high) and barstate.islast
     label.delete(lb_lonl)
 
     ln_lonh := line.new(bar_index - 300, lon_high, bar_index, lon_high,
-                        color=c_london, style=line.style_solid, width=1, extend=extend.right)
+                        color=c_london, style=line.style_solid, width=f_width(lon_high), extend=extend.right)
     ln_lonl := line.new(bar_index - 300, lon_low,  bar_index, lon_low,
-                        color=c_london, style=line.style_solid, width=1, extend=extend.right)
-    lb_lonh := label.new(bar_index, lon_high, "LonH", style=label.style_label_left,
+                        color=c_london, style=line.style_solid, width=f_width(lon_low),  extend=extend.right)
+    lb_lonh := label.new(bar_index, lon_high, "LonH" + f_suffix(lon_high), style=label.style_label_left,
                          color=color.new(color.black, 100), textcolor=c_london, size=size.small)
-    lb_lonl := label.new(bar_index, lon_low,  "LonL", style=label.style_label_left,
+    lb_lonl := label.new(bar_index, lon_low,  "LonL" + f_suffix(lon_low),  style=label.style_label_left,
                          color=color.new(color.black, 100), textcolor=c_london, size=size.small)
 
 // ─── BSL / SSL LIQUIDITY POOL DETECTION ──────────────────────────────────────
@@ -266,6 +286,27 @@ if show_liq and barstate.isconfirmed
     f_check_sweeps(bsl_prices, bsl_lines, bsl_labels, true)
     f_check_sweeps(ssl_prices, ssl_lines, ssl_labels, false)
 
+// Reclassify BSL/SSL labels based on current bias every last bar.
+// Swept pools are skipped — their "SWEPT" label stays as-is.
+f_update_pool_labels(arr_prices, arr_labels, is_bsl) =>
+    sz = array.size(arr_prices)
+    if sz > 0
+        for i = 0 to sz - 1
+            lb = array.get(arr_labels, i)
+            if not str.contains(label.get_text(lb), "SWEPT")
+                p      = array.get(arr_prices, i)
+                is_drw = f_is_draw(p)
+                if htf_bias == "Neutral"
+                    label.set_text(lb, is_bsl ? "BSL ▲" : "SSL ▼")
+                else if is_bsl
+                    label.set_text(lb, is_drw ? "BSL TARGET ▲" : "BSL TRAP ▲")
+                else
+                    label.set_text(lb, is_drw ? "SSL TARGET ▼" : "SSL TRAP ▼")
+
+if show_liq and barstate.islast
+    f_update_pool_labels(bsl_prices, bsl_labels, true)
+    f_update_pool_labels(ssl_prices, ssl_labels, false)
+
 // ─── JUDAS SWING DETECTION ────────────────────────────────────────────────────
 
 var float judas_sweep_level = na
@@ -273,15 +314,15 @@ var bool  judas_bullish     = false
 var bool  judas_confirmed   = false
 var bool  judas_fired       = false
 var float ny_open_price     = na
-var bool  ny_dir_up         = false  // true = initial NY move was up
-var bool  ny_dir_known      = false  // true once direction is established
+var bool  ny_dir_up         = false
+var bool  ny_dir_known      = false
 
 if ny_open
-    judas_confirmed  := false
-    judas_fired      := false
-    ny_dir_known     := false
-    ny_dir_up        := false
-    ny_open_price    := close
+    judas_confirmed   := false
+    judas_fired       := false
+    ny_dir_known      := false
+    ny_dir_up         := false
+    ny_open_price     := close
     judas_sweep_level := na
 
 if is_ny_kz and not ny_dir_known and not na(ny_open_price)
@@ -293,7 +334,7 @@ if is_ny_kz and not ny_dir_known and not na(ny_open_price)
         ny_dir_known := true
 
 judas_bull_setup = ny_dir_known and not ny_dir_up and is_ny_kz
-judas_bear_setup = ny_dir_known and ny_dir_up and is_ny_kz
+judas_bear_setup = ny_dir_known and ny_dir_up     and is_ny_kz
 
 if show_judas and not judas_confirmed and not judas_fired
     if judas_bull_setup
@@ -319,18 +360,17 @@ if show_judas and not judas_confirmed and not judas_fired
                     judas_fired       := true
                     break
 
-// Rising edge: judas just turned true this bar
 if show_judas and judas_confirmed and not judas_confirmed[1]
     jlbl = judas_bullish ? "J↑" : "J↓"
     jtxt = judas_bullish ? "Judas — Swept Lows (Long Bias)" : "Judas — Swept Highs (Short Bias)"
     line.new(bar_index - 50, judas_sweep_level, bar_index, judas_sweep_level,
              color=c_judas, style=line.style_dashed, width=2, extend=extend.right)
     label.new(bar_index, judas_bullish ? low : high, jlbl,
-              style      = judas_bullish ? label.style_label_up : label.style_label_down,
-              color      = color.new(c_judas, 20),
-              textcolor  = color.white,
-              size       = size.small,
-              tooltip    = jtxt)
+              style     = judas_bullish ? label.style_label_up : label.style_label_down,
+              color     = color.new(c_judas, 20),
+              textcolor = color.white,
+              size      = size.small,
+              tooltip   = jtxt)
     if judas_alert
         alert(jtxt + " @ " + str.tostring(judas_sweep_level, "#.##"), alert.freq_once_per_bar)
 
@@ -352,13 +392,10 @@ if show_asian
 if show_london
     if f_near_price(lon_high) or f_near_price(lon_low)
         score += 1
-
 if is_ny_kz or is_london_kz
     score += 1
-
 if show_judas and judas_confirmed
     score += 1
-
 if show_liq
     bsl_sz = array.size(bsl_prices)
     if bsl_sz > 0
@@ -373,7 +410,27 @@ if show_liq
                 score += 1
                 break
 
-dot_color = score >= dot_threshold ? c_dot_a : c_dot_b
+// ─── BIAS CONFLICT DETECTION ─────────────────────────────────────────────────
+// Checks if price is near a session level and whether that level is a draw or opposing.
+// Orange dot fires when A+ score is met but the nearby level works against the bias.
+
+near_pd     = show_pd     and (f_near_price(pd_high)  or f_near_price(pd_low)  or f_near_price(pd_close))
+near_asian  = show_asian  and (f_near_price(as_high)  or f_near_price(as_low))
+near_london = show_london and (f_near_price(lon_high) or f_near_price(lon_low))
+any_near_session = near_pd or near_asian or near_london
+
+draw_pd     = show_pd     and ((f_near_price(pd_high)  and f_is_draw(pd_high))  or
+                               (f_near_price(pd_low)   and f_is_draw(pd_low))   or
+                               (f_near_price(pd_close) and f_is_draw(pd_close)))
+draw_asian  = show_asian  and ((f_near_price(as_high)  and f_is_draw(as_high))  or
+                               (f_near_price(as_low)   and f_is_draw(as_low)))
+draw_london = show_london and ((f_near_price(lon_high) and f_is_draw(lon_high)) or
+                               (f_near_price(lon_low)  and f_is_draw(lon_low)))
+any_near_draw = draw_pd or draw_asian or draw_london
+
+// Conflict: high confluence score, sitting at a level, but that level opposes the bias
+conflict  = htf_bias != "Neutral" and score >= dot_threshold and any_near_session and not any_near_draw
+dot_color = conflict ? c_dot_conflict : score >= dot_threshold ? c_dot_a : c_dot_b
 
 plotshape(show_dot and score >= 1, title="Confluence Dot",
           style=shape.circle, location=location.belowbar,
