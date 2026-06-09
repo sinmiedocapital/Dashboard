@@ -376,7 +376,7 @@ if show_liq
 dot_color = score >= dot_threshold ? c_dot_a : c_dot_b
 
 plotshape(show_dot and score >= 1, title="Confluence Dot",
-          shape=shape.circle, location=location.belowbar,
+          style=shape.circle, location=location.belowbar,
           color=dot_color, size=size.tiny)
 
 // ─── END ──────────────────────────────────────────────────────────────────────
