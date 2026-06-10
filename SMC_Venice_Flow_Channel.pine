@@ -1,0 +1,89 @@
+//@version=6
+indicator("SMC Venice Flow — Channel", overlay=true, max_bars_back=500)
+
+// ── INPUTS ─────────────────────────────────────────────────────────────────
+ema_len      = input.int  (50,      "EMA Length",           minval=1,   group="Channel")
+atr_len      = input.int  (14,      "ATR Length",           minval=1,   group="Channel")
+atr_mult     = input.float(2.0,     "ATR Multiplier",       minval=0.1, step=0.1, group="Channel")
+zone_pct     = input.float(25.0,    "Zone % of Channel",    minval=5.0, maxval=49.0, step=1.0, group="Channel",
+                            tooltip="Percentage of channel height used as the entry zone at each extreme.")
+show_midline = input.bool (true,    "Show Midline",         group="Display")
+show_dots    = input.bool (true,    "Show Zone Touch Dots", group="Display")
+color_scheme = input.string("Classic", "Color Scheme",      options=["Classic", "Monochrome"], group="Display")
+
+// ── CALCULATIONS ────────────────────────────────────────────────────────────
+basis          = ta.ema(close, ema_len)
+atr_val        = ta.atr(atr_len)
+
+upper          = basis + atr_val * atr_mult
+lower          = basis - atr_val * atr_mult
+
+channel_height = upper - lower
+zone_size      = channel_height * (zone_pct / 100.0)
+
+upper_zone_low = upper - zone_size   // bottom edge of short zone
+lower_zone_hi  = lower + zone_size   // top edge of long zone
+
+// ── TREND DIRECTION ─────────────────────────────────────────────────────────
+is_up   = basis > basis[3]
+is_down = basis < basis[3]
+
+// Colors — resolved once per bar to avoid series-color issues in plot()
+c_up   = color_scheme == "Classic" ? color.new(#1E90FF, 0) : color.new(color.silver, 0)
+c_down = color_scheme == "Classic" ? color.new(#DC143C, 0) : color.new(color.gray,   0)
+c_flat = color.new(color.gray, 30)
+
+band_color = is_up ? c_up : is_down ? c_down : c_flat
+
+// Zone colors
+c_short_line = color_scheme == "Classic" ? color.new(#DC143C, 0)  : color.new(color.silver, 0)
+c_long_line  = color_scheme == "Classic" ? color.new(#008080, 0)  : color.new(color.silver, 0)
+c_short_fill = color_scheme == "Classic" ? color.new(#DC143C, 72) : color.new(color.silver, 75)
+c_long_fill  = color_scheme == "Classic" ? color.new(#008080, 72) : color.new(color.white,  80)
+c_mid_fill   = color.new(color.gray, 92)
+c_mid_line   = color.new(color.gray, 50)
+
+// ── ZONE TOUCH DETECTION ────────────────────────────────────────────────────
+// Wick-based: any bar whose wick penetrates the zone counts
+touch_short = high >= upper_zone_low
+touch_long  = low  <= lower_zone_hi
+
+// ── PLOTS ───────────────────────────────────────────────────────────────────
+// Band lines — color reflects trend direction
+p_upper = plot(upper, "Upper Band", color=band_color, linewidth=1)
+p_lower = plot(lower, "Lower Band", color=band_color, linewidth=1)
+
+// Invisible anchors for zone fills
+p_upper_zone = plot(upper_zone_low, display=display.none, editable=false)
+p_lower_zone = plot(lower_zone_hi,  display=display.none, editable=false)
+
+// Optional midline (EMA basis)
+p_mid = plot(show_midline ? basis : na, "Midline (EMA)", color=c_mid_line,
+             linewidth=1, style=plot.style_linebr)
+
+// ── FILLS (order matters for z-layering) ────────────────────────────────────
+// 1. Full channel body — neutral gray background
+fill(p_upper, p_lower, color=c_mid_fill, title="Channel Body")
+
+// 2. Short entry zone — top 25% of channel (painted over the gray)
+fill(p_upper, p_upper_zone, color=c_short_fill, title="Short Zone")
+
+// 3. Long entry zone — bottom 25% of channel (painted over the gray)
+fill(p_lower_zone, p_lower, color=c_long_fill, title="Long Zone")
+
+// ── ZONE TOUCH DOTS ─────────────────────────────────────────────────────────
+// Small circles just outside the candle — no arrows, no text
+plotshape(show_dots and touch_short, title="Short Zone Touch",
+          style=shape.circle, location=location.abovebar,
+          color=color.new(#DC143C, 20), size=size.tiny)
+
+plotshape(show_dots and touch_long, title="Long Zone Touch",
+          style=shape.circle, location=location.belowbar,
+          color=color.new(#008080, 20), size=size.tiny)
+
+// ── ALERTS ──────────────────────────────────────────────────────────────────
+alertcondition(touch_short, title="Short Zone Touch",
+               message="SMC Venice Flow: Price entered SHORT zone — potential short setup")
+
+alertcondition(touch_long, title="Long Zone Touch",
+               message="SMC Venice Flow: Price entered LONG zone — potential long setup")
