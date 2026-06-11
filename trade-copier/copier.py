@@ -1,9 +1,9 @@
 """
 Tradovate Trade Copier
 ----------------------
-Run this script in the background while you trade on TradingView.
-It watches your PRIMARY (Tradeify) account for fills and instantly
-mirrors every trade to your two Lucid Pro follower accounts.
+Run this script in the background (or deploy to Fly.io) while you trade on TradingView.
+It watches your PRIMARY (Lucid Pro #1) account for fills and instantly
+mirrors every trade to your follower accounts (Lucid Pro #2 + Tradeify).
 
 Usage:
     python copier.py
@@ -16,6 +16,7 @@ import logging
 import threading
 import requests
 import websocket
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -37,36 +38,59 @@ APP_ID      = os.getenv("APP_ID", "Sample App")
 APP_VERSION = os.getenv("APP_VERSION", "1.0")
 
 # ── Account definitions ───────────────────────────────────────────────────────
+# PRIMARY  = the account you connect to TradingView and trade on
+# FOLLOWER = accounts that automatically mirror every fill
 ACCOUNTS = {
     "primary": {
-        "label":     "Tradeify (Primary)",
+        "label":     "Lucid Pro #1 (Primary)",
         "username":  os.getenv("PRIMARY_USERNAME"),
         "password":  os.getenv("PRIMARY_PASSWORD"),
         "device_id": os.getenv("PRIMARY_DEVICE_ID", "primary-001"),
     },
     "follower1": {
-        "label":     "Lucid Pro #1",
+        "label":     "Lucid Pro #2",
         "username":  os.getenv("FOLLOWER1_USERNAME"),
         "password":  os.getenv("FOLLOWER1_PASSWORD"),
         "device_id": os.getenv("FOLLOWER1_DEVICE_ID", "follower1-001"),
     },
     "follower2": {
-        "label":     "Lucid Pro #2",
+        "label":     "Tradeify",
         "username":  os.getenv("FOLLOWER2_USERNAME"),
         "password":  os.getenv("FOLLOWER2_PASSWORD"),
         "device_id": os.getenv("FOLLOWER2_DEVICE_ID", "follower2-001"),
     },
 }
 
-sessions = {}        # key -> auth session dict
-_seen_fills = set()  # deduplicate fill events by fill id
-_contract_cache = {} # contractId (int) -> symbol string e.g. "NQM5"
-_ws_req_id = 1
+sessions        = {}
+_seen_fills     = set()
+_contract_cache = {}
+_ws_req_id      = 1
+_start_time     = time.time()
+
+
+# ── Health check server (for Fly.io / monitoring) ─────────────────────────────
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        uptime  = int(time.time() - _start_time)
+        accts   = ", ".join(s["label"] for s in sessions.values() if s.get("label"))
+        self.wfile.write(f"OK | uptime={uptime}s | env={ENV} | accounts={accts}".encode())
+
+    def log_message(self, *args):
+        pass  # silence noisy access logs
+
+
+def start_health_server():
+    port   = int(os.getenv("PORT", 8080))
+    server = HTTPServer(("0.0.0.0", port), HealthHandler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    logging.info(f"Health check listening on :{port}")
 
 
 # ── Authentication ────────────────────────────────────────────────────────────
 def authenticate(key: str):
-    acc = ACCOUNTS[key]
+    acc     = ACCOUNTS[key]
     payload = {
         "name":       acc["username"],
         "password":   acc["password"],
@@ -83,16 +107,16 @@ def authenticate(key: str):
     if "errorText" in data:
         raise RuntimeError(f"Auth failed [{acc['label']}]: {data['errorText']}")
 
-    token = data["accessToken"]
+    token   = data["accessToken"]
     headers = {"Authorization": f"Bearer {token}"}
 
-    r2 = requests.get(f"{REST_BASE}/account/list", headers=headers, timeout=10)
+    r2    = requests.get(f"{REST_BASE}/account/list", headers=headers, timeout=10)
     r2.raise_for_status()
     accts = r2.json()
     if not accts:
         raise RuntimeError(f"No accounts found for {acc['label']}")
 
-    acct = accts[0]
+    acct          = accts[0]
     sessions[key] = {
         "token":        token,
         "account_id":   acct["id"],
@@ -112,11 +136,11 @@ def ensure_auth(key: str):
 # ── Order placement ───────────────────────────────────────────────────────────
 def place_order(key: str, symbol: str, action: str, qty: int):
     ensure_auth(key)
-    s = sessions[key]
+    s       = sessions[key]
     payload = {
         "accountSpec": s["account_spec"],
         "accountId":   s["account_id"],
-        "action":      action,       # "Buy" or "Sell"
+        "action":      action,
         "symbol":      symbol,
         "orderQty":    qty,
         "orderType":   "Market",
@@ -126,7 +150,7 @@ def place_order(key: str, symbol: str, action: str, qty: int):
         "Authorization": f"Bearer {s['token']}",
         "Content-Type":  "application/json",
     }
-    r = requests.post(f"{REST_BASE}/order/placeorder", json=payload, headers=headers, timeout=10)
+    r      = requests.post(f"{REST_BASE}/order/placeorder", json=payload, headers=headers, timeout=10)
     r.raise_for_status()
     result = r.json()
     logging.info(f"       [{s['label']}]  {action} {qty} {symbol}  →  orderId={result.get('orderId', '?')}")
@@ -165,7 +189,7 @@ def resolve_symbol(contract_id) -> str:
     try:
         ensure_auth("primary")
         headers = {"Authorization": f"Bearer {sessions['primary']['token']}"}
-        r = requests.get(
+        r       = requests.get(
             f"{REST_BASE}/contract/item?id={contract_id}",
             headers=headers,
             timeout=5,
@@ -188,7 +212,7 @@ def process_fill(fill: dict):
         return
     _seen_fills.add(fill_id)
 
-    action      = fill.get("action")       # "Buy" or "Sell"
+    action      = fill.get("action")
     qty         = fill.get("qty", 0)
     contract_id = fill.get("contractId")
     symbol      = resolve_symbol(contract_id)
@@ -204,8 +228,8 @@ def process_fill(fill: dict):
 # ── WebSocket handlers ────────────────────────────────────────────────────────
 def ws_send(ws, endpoint: str, body: dict = None):
     global _ws_req_id
-    body_str = json.dumps(body) if body else ""
-    msg = f"{endpoint}\n{_ws_req_id}\n\n{body_str}"
+    body_str  = json.dumps(body) if body else ""
+    msg       = f"{endpoint}\n{_ws_req_id}\n\n{body_str}"
     ws.send(msg)
     _ws_req_id += 1
 
@@ -219,21 +243,15 @@ def on_open(ws):
 def on_message(ws, raw):
     if not raw:
         return
-
-    # Tradovate heartbeat — must respond with "[]"
     if raw[0] == "h":
         ws.send("[]")
         return
-
-    # Only process array frames
     if raw[0] != "a":
         return
-
     try:
         frames = json.loads(raw[1:])
     except json.JSONDecodeError:
         return
-
     for frame in frames:
         handle_frame(ws, frame)
 
@@ -248,16 +266,11 @@ def handle_frame(ws, frame: dict):
         ws_send(ws, "user/syncrequest", {
             "accounts": [sessions["primary"]["account_id"]]
         })
-
     elif event == "fill":
-        # Direct fill event
         process_fill(data)
-
     elif event == "props":
-        # Entity change events — fills arrive here too
         for fill in data.get("fill", []):
             process_fill(fill)
-
     elif event == "error":
         logging.error(f"Server error frame: {data}")
 
@@ -293,8 +306,8 @@ if __name__ == "__main__":
     print()
 
     if not CID or CID == "PASTE_YOUR_CID_HERE":
-        print("ERROR: CID and SEC not set in .env file.")
-        print("Get them at: trader.tradovate.com → Menu → API Access")
+        print("ERROR: CID and SEC not set in .env / environment variables.")
+        print("Get them at: demo.tradovate.com → Menu → API Access")
         raise SystemExit(1)
 
     print("Authenticating accounts…")
@@ -303,14 +316,17 @@ if __name__ == "__main__":
             authenticate(key)
         except Exception as e:
             logging.error(f"FATAL — could not authenticate: {e}")
+            logging.error("Waiting 60s before exit to prevent restart loop…")
+            time.sleep(60)
             raise SystemExit(1)
 
     print()
     print("All 3 accounts connected.")
     print()
-    print("► Trade on TradingView using your TRADEIFY account.")
-    print("► Every fill will automatically copy to both Lucid Pro accounts.")
+    print("► Trade on TradingView using your LUCID PRO #1 account.")
+    print("► Every fill copies automatically to Lucid Pro #2 + Tradeify.")
     print("► Press Ctrl+C to stop.")
     print()
 
+    start_health_server()
     start_websocket()
