@@ -1,9 +1,10 @@
 """
 Tradovate Trade Copier
 ----------------------
-Run this script in the background (or deploy to Fly.io) while you trade on TradingView.
-It watches your PRIMARY (Lucid Pro #1) account for fills and instantly
-mirrors every trade to your follower accounts (Lucid Pro #2 + Tradeify).
+Watches your PRIMARY (Lucid Pro $50K) account for fills and instantly
+mirrors every trade to your FOLLOWER (Tradeify $25K) account.
+
+Total capital managed: ~$75,400 across 2 accounts.
 
 Usage:
     python copier.py
@@ -38,26 +39,20 @@ APP_ID      = os.getenv("APP_ID", "Sample App")
 APP_VERSION = os.getenv("APP_VERSION", "1.0")
 
 # ── Account definitions ───────────────────────────────────────────────────────
-# PRIMARY  = the account you connect to TradingView and trade on
-# FOLLOWER = accounts that automatically mirror every fill
+# PRIMARY  = Lucid Pro $50,400 — connect THIS to TradingView and trade here
+# FOLLOWER = Tradeify $25,000  — mirrors every fill automatically
 ACCOUNTS = {
     "primary": {
-        "label":     "Lucid Pro #1 (Primary)",
+        "label":     "Lucid Pro $50K (Primary)",
         "username":  os.getenv("PRIMARY_USERNAME"),
         "password":  os.getenv("PRIMARY_PASSWORD"),
         "device_id": os.getenv("PRIMARY_DEVICE_ID", "primary-001"),
     },
-    "follower1": {
-        "label":     "Lucid Pro #2",
-        "username":  os.getenv("FOLLOWER1_USERNAME"),
-        "password":  os.getenv("FOLLOWER1_PASSWORD"),
-        "device_id": os.getenv("FOLLOWER1_DEVICE_ID", "follower1-001"),
-    },
-    "follower2": {
-        "label":     "Tradeify",
-        "username":  os.getenv("FOLLOWER2_USERNAME"),
-        "password":  os.getenv("FOLLOWER2_PASSWORD"),
-        "device_id": os.getenv("FOLLOWER2_DEVICE_ID", "follower2-001"),
+    "follower": {
+        "label":     "Tradeify $25K",
+        "username":  os.getenv("FOLLOWER_USERNAME"),
+        "password":  os.getenv("FOLLOWER_PASSWORD"),
+        "device_id": os.getenv("FOLLOWER_DEVICE_ID", "follower-001"),
     },
 }
 
@@ -68,24 +63,24 @@ _ws_req_id      = 1
 _start_time     = time.time()
 
 
-# ── Health check server (for Fly.io / monitoring) ─────────────────────────────
+# ── Health check server ───────────────────────────────────────────────────────
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        uptime  = int(time.time() - _start_time)
-        accts   = ", ".join(s["label"] for s in sessions.values() if s.get("label"))
-        self.wfile.write(f"OK | uptime={uptime}s | env={ENV} | accounts={accts}".encode())
+        uptime = int(time.time() - _start_time)
+        accts  = ", ".join(s["label"] for s in sessions.values() if s.get("label"))
+        self.wfile.write(f"OK | uptime={uptime}s | env={ENV} | {accts}".encode())
 
     def log_message(self, *args):
-        pass  # silence noisy access logs
+        pass
 
 
 def start_health_server():
     port   = int(os.getenv("PORT", 8080))
     server = HTTPServer(("0.0.0.0", port), HealthHandler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    logging.info(f"Health check listening on :{port}")
+    logging.info(f"Health check on :{port}")
 
 
 # ── Authentication ────────────────────────────────────────────────────────────
@@ -157,27 +152,13 @@ def place_order(key: str, symbol: str, action: str, qty: int):
     return result
 
 
-def mirror_to_followers(symbol: str, action: str, qty: int):
-    logging.info(f"⚡  Mirroring  {action} {qty} {symbol}  to followers…")
-    threads = []
-    for key in ("follower1", "follower2"):
-        t = threading.Thread(
-            target=_safe_place_order,
-            args=(key, symbol, action, qty),
-            daemon=True,
-        )
-        t.start()
-        threads.append(t)
-    for t in threads:
-        t.join(timeout=15)
-
-
-def _safe_place_order(key, symbol, action, qty):
+def mirror_to_follower(symbol: str, action: str, qty: int):
+    logging.info(f"⚡  Mirroring  {action} {qty} {symbol}  →  Tradeify…")
     try:
-        place_order(key, symbol, action, qty)
+        place_order("follower", symbol, action, qty)
     except Exception as e:
-        label = sessions.get(key, {}).get("label", key)
-        logging.error(f"  ✗  [{label}]  Failed to place order: {e}")
+        label = sessions.get("follower", {}).get("label", "Tradeify")
+        logging.error(f"  ✗  [{label}]  Failed: {e}")
 
 
 # ── Symbol resolution ─────────────────────────────────────────────────────────
@@ -198,7 +179,6 @@ def resolve_symbol(contract_id) -> str:
         name = r.json().get("name")
         if name:
             _contract_cache[contract_id] = name
-            logging.info(f"  Resolved contractId {contract_id} → {name}")
         return name
     except Exception as e:
         logging.warning(f"Could not resolve contractId {contract_id}: {e}")
@@ -218,11 +198,10 @@ def process_fill(fill: dict):
     symbol      = resolve_symbol(contract_id)
 
     if not symbol or not action or qty == 0:
-        logging.warning(f"  Fill {fill_id} skipped — missing data: {fill}")
         return
 
     logging.info(f"★  Fill on PRIMARY: {action} {qty} {symbol}  (fillId={fill_id})")
-    mirror_to_followers(symbol, action, qty)
+    mirror_to_follower(symbol, action, qty)
 
 
 # ── WebSocket handlers ────────────────────────────────────────────────────────
@@ -262,7 +241,6 @@ def handle_frame(ws, frame: dict):
 
     if event == "authorized":
         logging.info("WebSocket authorised ✓")
-        logging.info("Subscribing to account events…")
         ws_send(ws, "user/syncrequest", {
             "accounts": [sessions["primary"]["account_id"]]
         })
@@ -272,7 +250,7 @@ def handle_frame(ws, frame: dict):
         for fill in data.get("fill", []):
             process_fill(fill)
     elif event == "error":
-        logging.error(f"Server error frame: {data}")
+        logging.error(f"Server error: {data}")
 
 
 def on_error(ws, error):
@@ -299,32 +277,36 @@ def start_websocket():
 # ── Main ──────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     print()
-    print("=" * 50)
+    print("=" * 55)
     print("   Tradovate Trade Copier")
-    print("=" * 50)
+    print("   Lucid Pro $50,400  +  Tradeify $25,000")
+    print("   Total capital: ~$75,400")
+    print("=" * 55)
     print(f"   Mode : {ENV.upper()}")
     print()
 
     if not CID or CID == "PASTE_YOUR_CID_HERE":
-        print("ERROR: CID and SEC not set in .env / environment variables.")
-        print("Get them at: demo.tradovate.com → Menu → API Access")
+        print("ERROR: CID and SEC not set.")
+        print("Get them at: trader.tradovate.com → Menu → API Access")
+        logging.error("Waiting 60s before exit…")
+        time.sleep(60)
         raise SystemExit(1)
 
     print("Authenticating accounts…")
-    for key in ("primary", "follower1", "follower2"):
+    for key in ("primary", "follower"):
         try:
             authenticate(key)
         except Exception as e:
-            logging.error(f"FATAL — could not authenticate: {e}")
+            logging.error(f"FATAL — {e}")
             logging.error("Waiting 60s before exit to prevent restart loop…")
             time.sleep(60)
             raise SystemExit(1)
 
     print()
-    print("All 3 accounts connected.")
+    print("Both accounts connected.")
     print()
-    print("► Trade on TradingView using your LUCID PRO #1 account.")
-    print("► Every fill copies automatically to Lucid Pro #2 + Tradeify.")
+    print("► Connect TradingView to LUCID PRO (LTTZ9ZU99Z7)")
+    print("► Trade normally — Tradeify mirrors every fill automatically.")
     print("► Press Ctrl+C to stop.")
     print()
 
