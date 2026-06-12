@@ -2,6 +2,22 @@
 (function () {
   'use strict';
 
+  /* ============================================================
+     WAITLIST ENDPOINT
+     ------------------------------------------------------------
+     Paste your Formspree form URL between the quotes below.
+     Get it free at https://formspree.io  (New Form → copy the
+     endpoint, it looks like  https://formspree.io/f/abcwxyz ).
+
+     Until you replace this, the form still works as a live demo:
+     it shows the success message but does NOT send anywhere.
+     ============================================================ */
+  var WAITLIST_ENDPOINT = 'https://formspree.io/f/your_form_id';
+
+  function isConfigured() {
+    return WAITLIST_ENDPOINT.indexOf('your_form_id') === -1;
+  }
+
   /* ---- Mobile nav toggle ---- */
   var toggle = document.querySelector('.nav-toggle');
   var links = document.querySelector('.nav-links');
@@ -21,18 +37,65 @@
     });
   }
 
-  /* ---- Waitlist forms: success message on submit ---- */
+  /* ---- Waitlist forms ---- */
   document.querySelectorAll('form[data-waitlist]').forEach(function (form) {
+    // build an error line we can show if a submission fails
+    var error = document.createElement('p');
+    error.className = 'form-error';
+    error.setAttribute('role', 'alert');
+    form.appendChild(error);
+
+    function showSuccess() {
+      form.classList.add('submitted');
+      var ok = form.querySelector('.form-success');
+      if (ok) ok.classList.add('show');
+    }
+
     form.addEventListener('submit', function (e) {
       e.preventDefault();
+      error.classList.remove('show');
+
       var input = form.querySelector('input[type="email"]');
       if (input && !input.checkValidity()) {
         input.reportValidity();
         return;
       }
-      form.classList.add('submitted');
-      var ok = form.querySelector('.form-success');
-      if (ok) ok.classList.add('show');
+
+      // Demo mode: no endpoint set yet — just confirm visually.
+      if (!isConfigured()) {
+        showSuccess();
+        return;
+      }
+
+      var btn = form.querySelector('button[type="submit"]');
+      var label = btn ? btn.textContent : '';
+      if (btn) { btn.disabled = true; btn.textContent = 'Submitting…'; }
+
+      var data = new FormData(form);
+      data.append('_subject', 'New SMC waitlist signup');
+      data.append('page', document.title);
+
+      fetch(WAITLIST_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Accept': 'application/json' },
+        body: data
+      })
+        .then(function (res) {
+          if (res.ok) {
+            showSuccess();
+          } else {
+            return res.json().then(function (d) {
+              throw new Error((d && d.error) || 'Something went wrong.');
+            });
+          }
+        })
+        .catch(function () {
+          error.textContent = 'Sorry — that didn’t go through. Please try again.';
+          error.classList.add('show');
+        })
+        .finally(function () {
+          if (btn) { btn.disabled = false; btn.textContent = label; }
+        });
     });
   });
 

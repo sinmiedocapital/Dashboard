@@ -27,9 +27,10 @@ python3 -m http.server 8000
 ## Placeholders to replace before launch
 - **Calendly link:** `https://calendly.com/sinmiedocapital/strategy-session`
 - **Discord invite:** `https://discord.gg/sinmiedocapital`
-- **Waitlist form:** currently shows a success message client-side only.
-  Wire the `<form data-waitlist>` submit handler in `script.js` to your
-  email provider (Mailchimp, ConvertKit, Formspree, etc.).
+- **Waitlist form:** wired to [Formspree](https://formspree.io). Open
+  `script.js`, find `WAITLIST_ENDPOINT` near the top, and paste your form
+  URL (looks like `https://formspree.io/f/abcwxyz`). Until you do, the form
+  works as a live demo — it shows the success message but stores nothing.
 - **Testimonials:** placeholder copy and initials — swap for real quotes.
 
 ## Brand

@@ -465,6 +465,14 @@ h3 { font-size: 1.35rem; }
 form.submitted .form-row { display: none; }
 form.submitted .form-note { display: none; }
 
+.form-error {
+  display: none;
+  margin-top: 14px;
+  font-size: 0.9rem;
+  color: #E0786E;
+}
+.form-error.show { display: block; }
+
 /* ---------- Pricing ---------- */
 .pricing {
   display: grid;
